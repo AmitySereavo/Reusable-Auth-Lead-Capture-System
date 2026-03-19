@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               Int       @id @default(autoincrement())
+  email            String?   @unique
+  phone            String?   @unique
+  password         String
+  name             String?
+  country          String?
+  city             String?
+  adminLevel       Int       @default(0)
+  emailVerifiedAt  DateTime?
+  phoneVerifiedAt  DateTime?
+  createdAt        DateTime  @default(now())
+  sessions         Session[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     Int
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  revokedAt  DateTime?
+  ipAddress  String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model VerificationCode {
+  id         Int      @id @default(autoincrement())
+  identifier String
+  code       String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  deliveryAttempts VerificationDeliveryAttempt[]
+}
+
+model VerificationToken {
+  id              Int      @id @default(autoincrement())
+  identifier      String
+  tokenHash       String   @unique
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  target          String?
+  successRedirect String?
+
+  deliveryAttempts VerificationDeliveryAttempt[]
+}
+
+model VerificationDeliveryAttempt {
+  id                  Int      @id @default(autoincrement())
+  purpose             String   @default("verification")
+  delivery            String
+  channel             String
+  provider            String
+  mode                String
+
+  identifier          String
+  to                  String
+  originalTo          String
+  rewritten           Boolean  @default(false)
+
+  target              String?
+  successRedirect     String?
+
+  verificationCodeId  Int?
+  verificationTokenId Int?
+
+  ok                  Boolean
+  status              String
+  providerMessageId   String?
+
+  errorCode           String?
+  errorMessage        String?
+  errorCategory       String?
+
+  metadata            Json?
+  createdAt           DateTime @default(now())
+
+  verificationCode    VerificationCode?  @relation(fields: [verificationCodeId], references: [id], onDelete: SetNull)
+  verificationToken   VerificationToken? @relation(fields: [verificationTokenId], references: [id], onDelete: SetNull)
+
+  @@index([identifier])
+  @@index([delivery])
+  @@index([channel])
+  @@index([provider])
+  @@index([status])
+  @@index([createdAt])
+  @@index([verificationCodeId])
+  @@index([verificationTokenId])
+}
+
+model Lead {
+  id                     Int       @id @default(autoincrement())
+  firstName              String?
+  lastName               String?
+  fullName               String?
+  email                  String?   @unique
+  phone                  String?   @unique
+  country                String?
+  city                   String?
+  addressLine1           String?
+  addressLine2           String?
+  postalCode             String?
+  businessName           String?
+  preferredContactMethod String?
+  updatesOptIn           Boolean   @default(false)
+  emailVerifiedAt        DateTime?
+  phoneVerifiedAt        DateTime?
+  createdAt              DateTime  @default(now())
+}

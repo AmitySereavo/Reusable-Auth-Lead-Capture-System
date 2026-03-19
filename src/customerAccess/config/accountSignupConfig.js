@@ -1,0 +1,52 @@
+import { AUTH_RULES } from "./authRules";
+
+export const accountSignupConfig = {
+  mode: "account-signup",
+  target: "user",
+
+  fields: {
+    fullName: { visible: true, required: true },
+    identifier: {
+      visible: true,
+      required: true,
+      validation: {
+        identifier: true,
+        minPhoneLength: AUTH_RULES.phone.minLength,
+      },
+    },
+    password: {
+      visible: true,
+      required: true,
+      placeholder: "Create a password",
+      validation: {
+        minLength: AUTH_RULES.password.signupMinLength,
+        maxLength: AUTH_RULES.password.signupMaxLength,
+      },
+      helpText: `Minimum ${AUTH_RULES.password.signupMinLength} characters`,
+    },
+    
+    confirmPassword: {
+      visible: true,
+      required: true,
+    },
+    country: { visible: true, required: false },
+    city: { visible: true, required: false },
+  },
+
+  verification: {
+    required: true,
+    autoStart: true,
+    method: "same-as-identifier",
+    delivery: "code",
+    redirectToVerifyPage: true,
+    expiresInMinutes: 15,
+  },
+
+  submit: {
+    endpoint: "/api/signup",
+    buttonLabel: "Create Account",
+    successMessage: "Account created successfully.",
+    successRedirect: null,
+    redirectDelayMs: 1200,
+  },
+};
