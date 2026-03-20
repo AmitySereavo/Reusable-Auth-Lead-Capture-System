@@ -7,8 +7,8 @@ import { siteConfig } from "../config/siteConfig";
 import { AUTH_RULES } from "../config/authRules";
 import { AUTH_MESSAGES } from "../config/authMessages";
 import {
-  getPendingVerificationIdentifier,
-  clearPendingVerificationIdentifier,
+  getPendingVerificationContext,
+  clearPendingVerificationContext,
 } from "../utils/verificationSession";
 import { isEmail } from "../utils/identifier";
 
@@ -39,10 +39,10 @@ export default function VerifyForm({
   routes = {
     login: siteConfig.routes.login,
   },
-  
   title = "Verify Your Account",
   subtitle,
 }) {
+  const [pendingContext, setPendingContext] = useState(null);
   const [identifier, setIdentifier] = useState("");
   const [maskedIdentifier, setMaskedIdentifier] = useState("");
   const [codeDigits, setCodeDigits] = useState(Array(CODE_LENGTH).fill(""));
@@ -55,11 +55,12 @@ export default function VerifyForm({
   const inputRefs = useRef([]);
 
   useEffect(() => {
-    const storedIdentifier = getPendingVerificationIdentifier();
+    const storedContext = getPendingVerificationContext();
 
-    if (storedIdentifier) {
-      setIdentifier(storedIdentifier);
-      setMaskedIdentifier(getMaskedIdentifier(storedIdentifier));
+    if (storedContext?.identifier) {
+      setPendingContext(storedContext);
+      setIdentifier(storedContext.identifier);
+      setMaskedIdentifier(getMaskedIdentifier(storedContext.identifier));
     } else {
       setMessage(
         AUTH_MESSAGES?.verification?.noSessionFound ||
@@ -80,15 +81,15 @@ export default function VerifyForm({
   }, [identifier]);
 
   useEffect(() => {
-    if (!identifier || autoSent) return;
+    if (!identifier || !pendingContext || autoSent) return;
 
     async function autoSendCode() {
-      await sendVerificationCode(identifier, true);
+      await sendVerificationCode(true);
       setAutoSent(true);
     }
 
     autoSendCode();
-  }, [identifier, autoSent]);
+  }, [identifier, pendingContext, autoSent]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -109,8 +110,21 @@ export default function VerifyForm({
     }, 50);
   }
 
-  async function sendVerificationCode(currentIdentifier, isAuto = false) {
-    if (!currentIdentifier) {
+  function buildVerifyStartPayload(context) {
+    return {
+      identifier: context.identifier,
+      delivery: context.delivery || "code",
+      method: context.method || "same-as-identifier",
+      target: context.target || null,
+      successRedirect: context.successRedirect || null,
+      expiresInMinutes: context.expiresInMinutes,
+      expiresInHours: context.expiresInHours,
+      phoneChannel: context.phoneChannel || null,
+    };
+  }
+
+  async function sendVerificationCode(isAuto = false) {
+    if (!pendingContext?.identifier) {
       setMessage(
         AUTH_MESSAGES?.verification?.noIdentifierForVerification ||
           "Missing identifier for verification."
@@ -129,18 +143,26 @@ export default function VerifyForm({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ identifier: currentIdentifier }),
+        body: JSON.stringify(buildVerifyStartPayload(pendingContext)),
       });
 
       const data = await res.json();
 
       if (res.ok) {
+        const resendLabel =
+          pendingContext.delivery === "link"
+            ? AUTH_MESSAGES?.verification?.resendLinkSent || "Verification link resent."
+            : AUTH_MESSAGES?.verification?.resendCodeSent || "Verification code resent.";
+
+        const autoLabel =
+          pendingContext.delivery === "link"
+            ? AUTH_MESSAGES?.verification?.autoLinkSent || "Verification link sent."
+            : AUTH_MESSAGES?.verification?.autoCodeSent || "Verification code sent.";
+
         setMessage(
           isAuto
-            ? AUTH_MESSAGES?.verification?.autoCodeSent || "Verification code sent."
-            : data.message ||
-                AUTH_MESSAGES?.verification?.resendCodeSent ||
-                "Verification code resent."
+            ? autoLabel
+            : data.message || resendLabel
         );
         setMessageType("info");
         setCooldown(RESEND_COOLDOWN);
@@ -207,7 +229,7 @@ export default function VerifyForm({
         );
         setMessageType("success");
 
-        clearPendingVerificationIdentifier();
+        clearPendingVerificationContext();
 
         setTimeout(() => {
           window.location.href = routes.login || "/login";
@@ -309,6 +331,9 @@ export default function VerifyForm({
     }
   }
 
+  const deliveryLabel =
+    pendingContext?.delivery === "link" ? "link" : "code";
+
   return (
     <AuthShell
       businessName={businessName}
@@ -317,8 +342,8 @@ export default function VerifyForm({
       subtitle={
         subtitle ||
         (maskedIdentifier
-          ? `Enter the code sent to ${maskedIdentifier}`
-          : "Enter your verification code")
+          ? `Enter the ${deliveryLabel} sent to ${maskedIdentifier}`
+          : `Enter your verification ${deliveryLabel}`)
       }
       message={message}
       messageType={messageType}
@@ -353,14 +378,14 @@ export default function VerifyForm({
 
         <button
           type="button"
-          onClick={() => sendVerificationCode(identifier, false)}
-          disabled={sendingCode || cooldown > 0 || !identifier}
+          onClick={() => sendVerificationCode(false)}
+          disabled={sendingCode || cooldown > 0 || !identifier || !pendingContext}
         >
           {sendingCode
             ? "Sending..."
             : cooldown > 0
-            ? `Resend Code (${cooldown}s)`
-            : "Resend Code"}
+            ? `Resend ${pendingContext?.delivery === "link" ? "Link" : "Code"} (${cooldown}s)`
+            : `Resend ${pendingContext?.delivery === "link" ? "Link" : "Code"}`}
         </button>
       </div>
     </AuthShell>

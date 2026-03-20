@@ -172,11 +172,14 @@ async function sendSmsLikeViaProvider({
       rewritten: false,
       from: provider.from,
       text: channel === "whatsapp" ? `[WhatsApp] ${text}` : text,
+      channel,
+      provider: channel === "whatsapp" ? "whatsapp-console" : "sms-console",
+      mode: "console",
     });
   }
 
-  if (channel === "sms" && provider.mode === "twilio") {
-    return sendSmsVerificationWithTwilio({
+    if (channel === "sms" && provider.mode === "twilio") {
+    const twilioResult = await sendSmsVerificationWithTwilio({
       to: identifier,
       originalTo: identifier,
       rewritten: false,
@@ -184,6 +187,29 @@ async function sendSmsLikeViaProvider({
       messagingServiceSid: provider.messagingServiceSid || null,
       text,
     });
+
+    if (
+      !twilioResult.ok &&
+      process.env.NODE_ENV !== "production"
+    ) {
+      console.warn(
+        "Twilio SMS failed in development. Falling back to console simulation.",
+        twilioResult.error
+      );
+
+      return sendSmsVerification({
+        to: identifier,
+        originalTo: identifier,
+        rewritten: false,
+        from: provider.from,
+        text: `[DEV FALLBACK AFTER TWILIO ERROR]\n${text}`,
+        channel: "sms",
+        provider: "sms-console",
+        mode: "console",
+      });
+    }
+
+    return twilioResult;
   }
 
   if (channel === "whatsapp" && provider.mode === "meta") {

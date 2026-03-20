@@ -33,6 +33,9 @@ This project is designed to be adapted across different websites and businesses 
 - Config-driven lead collection
 - Email-first verification support
 - Phone / WhatsApp number can be collected as contact data
+- Channel-based verification decisions for leads
+- Already-verified submitted lead channels can skip verification and go straight to content
+- New or unverified submitted lead channels must verify before content access
 
 ### Reusability
 
@@ -48,20 +51,32 @@ This project is designed to be adapted across different websites and businesses 
 - Flow-specific redirect behavior
 - Config-driven verification delivery content
 - Provider-abstracted verification delivery
+- Verification session context persisted for verify/resend flows
 
 ### Verification Delivery
 
 - Email delivery abstraction
 - SMS delivery abstraction
+- WhatsApp delivery abstraction
 - Resend integration for email
-- Console providers for local/dev testing
 - Twilio SMS transport support
-- WhatsApp verification channel support
-- direct Meta WhatsApp provider support
-- phone verification channel choice in UI when a phone number is detected
+- Meta WhatsApp API transport support
+- Console providers for local/dev testing
 - Dev-safe Resend test routing
 - Normalized delivery result structure
 - Delivery-attempt audit logging in Prisma
+- Twilio status callback support for later delivery updates
+- Dev-only console fallback for immediate Twilio API failures
+
+### UX Improvements
+
+- Live identifier detection while typing
+- If the current identifier is recognized as a phone number, the UI can reveal a verification channel choice
+- Phone verification channel choice supports:
+  - WhatsApp
+  - SMS
+- Email identifiers do not show the phone verification channel choice
+- Verification messages are centralized in config for easier reuse across brands and projects
 
 ---
 
@@ -74,6 +89,7 @@ This project is designed to be adapted across different websites and businesses 
 - bcrypt
 - Resend (email provider integration)
 - Twilio (SMS transport support)
+- Meta WhatsApp Business API / Cloud API (direct WhatsApp provider support)
 
 ---
 
@@ -97,6 +113,9 @@ src/
         start/
         check/
         consume-link/
+      webhooks/
+        twilio/
+          status/
     dashboard/
       page.js
     example/
@@ -162,6 +181,7 @@ src/
         emailResend.js
         smsConsole.js
         smsTwilio.js
+        whatsappMeta.js
     prisma.js
 ```
 
@@ -174,10 +194,29 @@ src/
 1. User submits signup form
 2. User record is created
 3. Verification is initiated according to the configured verification settings
-4. If the flow uses code verification and redirects to the verify page, the user is sent to `/verify`
-5. If the flow uses link verification, the user opens the link they receive and confirms verification on the verify page
-6. Verification succeeds
-7. The user is redirected according to the configured flow
+4. If the submitted identifier is a phone number, the UI can ask the user whether to receive verification by **WhatsApp** or **SMS**
+5. If the flow uses code verification and redirects to the verify page, the user is sent to `/verify`
+6. If the flow uses link verification, the user opens the link they receive and confirms verification on the verify page
+7. Verification succeeds
+8. The user is redirected according to the configured flow
+
+### Lead Capture Flow
+
+1. User submits a lead form
+2. Lead data is validated
+3. The submitted identifier is normalized and matched against existing leads
+4. If the submitted channel is already verified for that lead:
+   - verification is skipped
+   - the user can be redirected straight to content
+
+5. If the submitted channel is not yet verified:
+   - verification is triggered according to the flow config
+
+6. Verification delivery is started according to the configured flow
+7. If link verification is used, the user opens the link and confirms on the verify page
+8. If code verification is used, the user enters the code on `/verify`
+9. Verification succeeds
+10. The user is redirected according to the configured flow
 
 ### Login Flow
 
@@ -189,25 +228,9 @@ src/
 6. User is authenticated
 7. User is redirected to `/dashboard`
 
-### Lead Capture Flow
-
-1. User submits a lead form
-2. Lead data is validated
-3. Lead record is stored
-4. Verification may be triggered depending on the form config
-5. Verification delivery is started according to the configured flow
-6. If link verification is used, the user opens the link and confirms on the verify page
-7. If code verification is used, the user enters the code on `/verify`
-8. Verification succeeds
-9. The user is redirected according to the configured flow
-
 ---
 
 ## Current Working Verification Behavior
-
-- when identifier input is recognized as phone during typing, the UI can reveal a phone verification channel choice
-
--phone verification can be sent through SMS or WhatsApp depending on flow config and user choice
 
 ### Lead Flow
 
@@ -217,22 +240,29 @@ Current lead flows are config-driven and can choose:
 - verification by `link`
 - target-aware delivery content
 - flow-specific redirect behavior
+- already-verified submitted-channel skip logic
+- verified-content redirect behavior
 
 A lead flow can be configured to:
 
 - collect email
 - collect phone / WhatsApp number as contact data
 - use email-first verification
+- reveal phone verification channel choice only when the identifier is a phone number
 - redirect after submit
 - redirect after successful verification
+- redirect already-verified channels straight to content
 
 ### Account Flow
 
 Current account verification flow:
 
-- verification delivery can use `code`
+- verification delivery can use `code` or `link`
 - code entry page: `/verify`
 - login redirects to `/dashboard`
+- phone identifier entry can reveal channel choice:
+  - `whatsapp`
+  - `sms`
 
 ### Verify Page Behavior
 
@@ -284,6 +314,10 @@ Because `useSearchParams()` is used, `/verify` was split so the client-side toke
 
 - `POST /api/capture/lead`
 
+### Webhooks
+
+- `POST /api/webhooks/twilio/status`
+
 ---
 
 ## Database Models
@@ -309,6 +343,26 @@ Stores registered account data such as:
 - city
 - verification timestamps
 - admin level
+
+### Lead
+
+Stores reusable lead capture data such as:
+
+- email
+- phone
+- lead profile fields
+- `emailVerifiedAt`
+- `phoneVerifiedAt`
+
+Important design note:
+
+Lead verification is handled per submitted channel, not as a single person-level verified state.
+
+Examples:
+
+- if a lead submits an email and `emailVerifiedAt` exists, verification can be skipped for that email flow
+- if a lead submits a phone number and `phoneVerifiedAt` exists, verification can be skipped for that phone flow
+- a person may appear more than once across different lead records or flow contexts if that fits the business need
 
 ### Session
 
@@ -360,13 +414,11 @@ This provides visibility into:
 - console/dev sends
 - Resend email sends
 - Twilio SMS sends
+- Meta WhatsApp sends
 - normalized provider failures
 - dev-safe email rewrites
 - verification-linked delivery history
-
-### Lead
-
-Stores lead capture data for reusable marketing, onboarding, or intake flows.
+- later Twilio delivery status updates
 
 ---
 
@@ -389,6 +441,7 @@ TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 TWILIO_AUTH_TOKEN="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 TWILIO_SMS_FROM="+1XXXXXXXXXX"
 TWILIO_MESSAGING_SERVICE_SID=""
+TWILIO_STATUS_CALLBACK_URL=""
 
 WHATSAPP_ACCESS_TOKEN=""
 WHATSAPP_PHONE_NUMBER_ID=""
@@ -403,7 +456,11 @@ Notes:
 - `RESEND_DEV_TEST_EMAIL` is the dev-safe test inbox used when email delivery is rewritten in development
 - if `RESEND_API_KEY` is missing, email delivery can fall back to console mode depending on config
 - SMS can use console mode or Twilio depending on config/env
-- for the current project direction, email is the recommended active verification channel while SMS remains optional infrastructure
+- WhatsApp can use console mode or Meta API mode depending on config/env
+- if `TWILIO_STATUS_CALLBACK_URL` is blank, the app can build a callback URL from `NEXT_PUBLIC_APP_URL`
+- for local-only development, `NEXT_PUBLIC_APP_URL="http://localhost:3000"` is fine
+- real Twilio status callbacks require a publicly reachable URL
+- the current practical direction keeps email highly reliable while allowing SMS and WhatsApp flows where useful
 - Twilio SMS sending requires proper sender setup and may be restricted on trial accounts
 
 ---
@@ -489,6 +546,7 @@ Use this file to customize:
 - signup messages
 - login messages
 - verification messages
+- token-link confirmation page messages
 - common error messages
 
 ### Shared Field Registry
@@ -506,6 +564,7 @@ Use this file to define shared field properties such as:
 - input types
 - placeholders
 - select options
+- radio options
 - reusable metadata for generic forms
 
 ### Flow-Specific Configs
@@ -529,6 +588,7 @@ Use these files to:
 - choose whether to redirect to `/verify`
 - control post-submit redirects
 - control post-verification redirects
+- define verified-content redirects where useful
 - adapt the same system to different business contexts
 
 ### Shared Site Defaults
@@ -562,6 +622,7 @@ Use this file to define centralized verification message content for:
 - link delivery
 - email content
 - SMS content
+- WhatsApp content
 - target-specific overrides such as `user` and `lead`
 
 ### Verification Provider Settings
@@ -576,24 +637,15 @@ Use this file to control things like:
 
 - provider mode for email
 - provider mode for SMS
+- provider mode for WhatsApp
 - sender defaults
 - dev-safe email rewrite settings
 - Twilio sender settings
-
-### Example: Lead Flow
-
-Lead flows can be configured to:
-
-- capture a minimal or enriched set of lead fields
-- collect email and/or phone / WhatsApp contact info
-- choose code or link verification
-- redirect after submit
-- require explicit verification on `/verify`
-- redirect after successful verification
+- Meta WhatsApp settings
 
 ---
 
-## Validation Design
+## Validation and Identifier Design
 
 Validation is shared and centralized through:
 
@@ -603,9 +655,9 @@ src/customerAccess/utils/identifier.js
 src/customerAccess/config/authRules.js
 ```
 
-### Important Design Note
+### Important Design Notes
 
-Signup and login do not have to enforce the same password rules.
+#### Signup and login do not have to enforce the same password rules
 
 For example:
 
@@ -613,6 +665,42 @@ For example:
 - login should only require a password to be entered and let the server verify it against the database
 
 This allows older or imported accounts to continue logging in even if they were created under different password rules.
+
+#### Phone normalization is centralized
+
+Phone identifiers are normalized through shared utilities before lookup and verification so that common variations of the same number can resolve consistently.
+
+Examples:
+
+- `8765892721`
+- `18765892721`
+- `+18765892721`
+
+can all normalize to the same canonical format.
+
+---
+
+## Verification Session Context
+
+Verification session context is stored client-side for verify/resend flows.
+
+This context can include:
+
+- identifier
+- delivery
+- method
+- target
+- success redirect
+- expiry settings
+- selected phone channel
+
+Main file:
+
+```txt
+src/customerAccess/utils/verificationSession.js
+```
+
+This allows verify-page resend behavior to preserve the original verification intent rather than falling back to a stripped-down request.
 
 ---
 
@@ -632,6 +720,8 @@ Verification is designed to be flow-driven rather than hardcoded into one path.
 - provider-abstracted verification delivery
 - normalized verification delivery results
 - delivery-attempt audit logging
+- phone-channel selection for phone identifiers
+- channel-aware lead verification skip logic
 
 ### Current Storage
 
@@ -662,16 +752,13 @@ It can vary by flow, for example:
 - submit redirect after lead capture
 - verify-page redirect for code-based flows
 - success redirect after link verification
+- already-verified submitted-channel redirect for lead content flows
 
 ---
 
 ## Verification Delivery Design
 
 Verification delivery is abstracted so route handlers do not contain provider-specific logic.
-
-- email → Resend / console
-- sms → Twilio / console
-- whatsapp → Meta WhatsApp API / console
 
 ### Delivery Layer
 
@@ -685,6 +772,7 @@ src/lib/verification/providers/emailConsole.js
 src/lib/verification/providers/emailResend.js
 src/lib/verification/providers/smsConsole.js
 src/lib/verification/providers/smsTwilio.js
+src/lib/verification/providers/whatsappMeta.js
 src/customerAccess/config/verificationProviders.js
 src/customerAccess/config/verificationContent.js
 ```
@@ -699,16 +787,22 @@ src/customerAccess/config/verificationContent.js
 - **sms**
   - console provider
   - Twilio provider support
+  - Twilio status callback support for later delivery updates
+  - dev-only console fallback for immediate Twilio API errors
+
+- **whatsapp**
+  - console provider
+  - direct Meta WhatsApp API provider support
 
 ### Current Product Direction
 
-email remains the most reliable active channel
+Current practical direction:
 
-phone numbers can trigger user choice of SMS or WhatsApp
-
-WhatsApp support exists in the architecture and is being integrated directly via the Meta API
-
-SMS can remain available without being the main product focus
+- keep email highly reliable
+- allow phone users to choose WhatsApp or SMS where appropriate
+- keep SMS transport support available
+- support direct Meta WhatsApp integration without coupling WhatsApp to Twilio
+- keep console fallback and audit logging especially useful in development
 
 ### Dev-Safe Email Testing
 
@@ -720,7 +814,14 @@ Typical behavior:
 - actual test delivery goes to `delivered@resend.dev`
 - the message content includes a dev note showing the original intended recipient
 
-This makes it possible to test the real provider integration before using a verified custom domain.
+### Console Delivery in Development
+
+Console providers are useful in development for:
+
+- SMS simulation
+- WhatsApp simulation
+- immediate visibility into code/link content in terminal output
+- fallback when a provider fails immediately in dev
 
 ### Normalized Delivery Result
 
@@ -752,6 +853,7 @@ This allows you to inspect:
 - thrown provider/config errors that are normalized by the delivery layer
 - verification code / token linkage
 - target and redirect context
+- later Twilio delivery-status updates
 
 This provides a stronger foundation for:
 
@@ -812,6 +914,15 @@ src/app/globals.css
 
 ## Testing the System
 
+### Signup + Phone + Channel Choice
+
+1. Go to `/signup`
+2. Enter a phone number in the identifier field
+3. Confirm the UI reveals the phone verification channel choice
+4. Choose **WhatsApp** or **SMS**
+5. Submit the form
+6. Confirm verification starts using the selected phone channel
+
 ### Signup + Verify by Code
 
 1. Go to `/signup`
@@ -824,11 +935,19 @@ src/app/globals.css
 
 1. Go to `/example/lead-capture`
 2. Submit lead data
-3. Trigger verification according to the current lead flow config
-4. Click the verification link from terminal, email, or SMS provider output if applicable
-5. Click **Verify** on the verify page
-6. Confirm the lead is marked verified
-7. Confirm redirect to the configured success page
+3. If the submitted channel is already verified, confirm redirect straight to content
+4. If not verified, trigger verification according to the current lead flow config
+5. Click the verification link from terminal, email, SMS, or WhatsApp provider output if applicable
+6. Click **Verify** on the verify page
+7. Confirm the lead is marked verified
+8. Confirm redirect to the configured success/content page
+
+### Lead Capture + Already Verified Channel
+
+1. Submit a lead form using an already-verified email or phone number
+2. Confirm the lead is recognized as existing for that submitted channel
+3. Confirm verification is skipped
+4. Confirm redirect straight to the configured content page
 
 ### Login + Session
 
@@ -853,6 +972,15 @@ src/app/globals.css
 1. Leave SMS in console mode for local/dev-safe testing, or
 2. configure Twilio correctly if you want transport-level testing
 3. trigger a phone-based verification flow
+4. confirm the normalized delivery result
+5. confirm a `VerificationDeliveryAttempt` row is created
+6. if using Twilio status callbacks, confirm later status updates are recorded
+
+### WhatsApp Delivery Testing
+
+1. Leave WhatsApp in console mode for local/dev-safe testing, or
+2. configure direct Meta WhatsApp settings
+3. trigger a phone-based verification flow with `phoneChannel = whatsapp`
 4. confirm the normalized delivery result
 5. confirm a `VerificationDeliveryAttempt` row is created
 
@@ -882,24 +1010,28 @@ src/app/globals.css
 - provider-abstracted verification delivery
 - flow-aware verification delivery content
 - Resend email integration
+- Twilio SMS transport support
+- direct Meta WhatsApp provider support
 - normalized verification delivery result structure
 - delivery-attempt audit logging in Prisma
-- Twilio SMS transport support
+- Twilio delivery-status callback support
+- lead submitted-channel verification skip logic
+- phone-channel choice for phone identifiers
 
 ### Recommended Next Improvements
 
 - hash verification codes instead of storing plaintext
 - add rate limiting to signup, login, verify, and lead endpoints
 - add brute-force protection
-- add Twilio delivery status callback / webhook logging
+- add webhook signature verification for Twilio status callbacks
 - stop exposing verification codes and links in production logs
 - continue consolidating remaining hardcoded API response messages into shared config where appropriate
-- add provider-backed delivery status handling beyond the current synchronous send result
+- add provider-backed delivery status handling beyond Twilio where useful
 - add richer flow metadata in delivery audit records where useful
 - add spam protection to lead capture endpoints
 - add protected-route examples
 - add file upload hardening if uploads are introduced later
-- design and add WhatsApp delivery support when ready
+- expand content-delivery / lead-magnet flow configuration where needed
 
 ---
 
@@ -955,8 +1087,23 @@ Check:
 - whether you are using a valid Twilio sender or Messaging Service
 - whether the destination number format is correct
 - whether your trial account restrictions apply
-- whether the delivery attempt only reached an initial accepted state
-- whether a later delivery-status callback system is still pending
+- whether the initial Twilio response only reflects accepted/queued state
+- whether your status callback URL is reachable publicly
+- whether a later status update reports `undelivered` or `failed`
+
+### If Twilio status callbacks are not hitting locally
+
+`localhost` is not publicly reachable by Twilio.
+Use a public URL/tunnel in development if you want Twilio to call back into your local app.
+
+### If Meta WhatsApp is not sending
+
+Check:
+
+- whether `WHATSAPP_ACCESS_TOKEN` is valid
+- whether `WHATSAPP_PHONE_NUMBER_ID` is correct
+- whether the destination number is in the expected format
+- whether the current environment should still be using console mode instead
 
 ### If redirects make debugging difficult
 
@@ -1000,9 +1147,10 @@ To adapt this system for a new business or website:
 6. choose verification content per flow/target where needed
 7. choose verification success redirects per flow
 8. choose submit redirects per flow
-9. style the forms through `src/customerAccess/styles/auth.css`
-10. connect real providers for verification delivery where appropriate
-11. connect lead data to business workflows if needed
+9. choose verified-content redirects where needed
+10. style the forms through `src/customerAccess/styles/auth.css`
+11. connect real providers for verification delivery where appropriate
+12. connect lead data to business workflows if needed
 
 ---
 
@@ -1012,21 +1160,20 @@ This project originally started with a broader website direction and was later r
 
 The current purpose of the repository is:
 
-**A reusable signup, verification, login, logout, session, lead capture, and verification-delivery system for future projects.**
+**A reusable signup, verification, login, logout, session, lead capture, content-gated lead flow, and verification-delivery system for future projects.**
 
 Current practical direction:
 
 - keep the core system reusable and config-driven
-- use email as the most reliable active verification channel
-- collect phone / WhatsApp number where useful as contact data
-- leave SMS as available infrastructure for later operational rollout
-- add WhatsApp delivery support later as a deliberate upgrade rather than forcing it early
+- use centralized configuration and messaging wherever possible
+- treat verification as channel verification where appropriate
+- keep email highly reliable
+- allow phone users to choose WhatsApp or SMS where useful
+- support direct Meta WhatsApp integration separately from Twilio
+- keep SMS transport support available without making it the only phone strategy
 
 ---
 
 ## License
 
 Add your preferred license here.
-#   R e u s a b l e - A u t h - L e a d - C a p t u r e - S y s t e m 
- 
- 

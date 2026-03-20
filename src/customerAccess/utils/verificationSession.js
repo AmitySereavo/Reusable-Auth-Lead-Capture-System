@@ -1,18 +1,30 @@
-const PENDING_VERIFICATION_KEY = "pendingVerificationIdentifier";
+const PENDING_VERIFICATION_CONTEXT_KEY = "pendingVerificationContext";
 
-export function setPendingVerificationIdentifier(identifier) {
+export function setPendingVerificationContext(context) {
   if (typeof window === "undefined") return;
-  sessionStorage.setItem(PENDING_VERIFICATION_KEY, identifier);
+
+  window.localStorage.setItem(
+    PENDING_VERIFICATION_CONTEXT_KEY,
+    JSON.stringify(context || {})
+  );
 }
 
-export function getPendingVerificationIdentifier() {
-  if (typeof window === "undefined") return "";
-  return sessionStorage.getItem(PENDING_VERIFICATION_KEY) || "";
+export function getPendingVerificationContext() {
+  if (typeof window === "undefined") return null;
+
+  const raw = window.localStorage.getItem(PENDING_VERIFICATION_CONTEXT_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
-export function clearPendingVerificationIdentifier() {
+export function clearPendingVerificationContext() {
   if (typeof window === "undefined") return;
-  sessionStorage.removeItem(PENDING_VERIFICATION_KEY);
+  window.localStorage.removeItem(PENDING_VERIFICATION_CONTEXT_KEY);
 }
 
 export function hasPendingVerificationIdentifier() {

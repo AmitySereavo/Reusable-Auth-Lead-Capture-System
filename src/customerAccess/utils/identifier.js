@@ -9,12 +9,34 @@ export function normalizeEmail(value) {
 }
 
 export function normalizePhone(value) {
-  return String(value).replace(/[^\d+]/g, "");
+  const raw = String(value || "").trim();
+
+  if (!raw) return "";
+
+  const hasLeadingPlus = raw.startsWith("+");
+  const digitsOnly = raw.replace(/\D/g, "");
+
+  if (!digitsOnly) return "";
+
+  if (hasLeadingPlus) {
+    return `+${digitsOnly}`;
+  }
+
+  if (digitsOnly.length === 10) {
+    return `+1${digitsOnly}`;
+  }
+
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+    return `+${digitsOnly}`;
+  }
+
+  return `+${digitsOnly}`;
 }
 
 export function isPhone(value, minLength = AUTH_RULES.phone.minLength) {
   const normalized = normalizePhone(value);
-  return normalized.length >= minLength;
+  const digitCount = normalized.replace(/\D/g, "").length;
+  return digitCount >= minLength;
 }
 
 export function parseIdentifier(

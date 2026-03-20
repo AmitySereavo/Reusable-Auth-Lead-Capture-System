@@ -4,22 +4,31 @@ export async function sendSmsVerification({
   to,
   originalTo = to,
   rewritten = false,
+  from = null,
   text,
-  from,
+  channel = "sms",
+  provider = "sms-console",
+  mode = "console",
 }) {
-  console.log("SMS VERIFICATION");
-  console.log({
-    to,
-    originalTo,
-    rewritten,
-    from,
-    text,
-  });
+  const label = channel === "whatsapp" ? "WHATSAPP" : "SMS";
+
+  console.log(`\n=== ${label} VERIFICATION (${mode.toUpperCase()}) ===`);
+  console.log("Provider:", provider);
+  console.log("To:", to);
+  console.log("Original To:", originalTo);
+
+  if (from) {
+    console.log("From:", from);
+  }
+
+  console.log("Message:");
+  console.log(text);
+  console.log("=== END VERIFICATION MESSAGE ===\n");
 
   return buildDeliverySuccessResult({
-    provider: "sms-console",
-    channel: "sms",
-    mode: "console",
+    provider,
+    channel,
+    mode,
     to,
     originalTo,
     rewritten,

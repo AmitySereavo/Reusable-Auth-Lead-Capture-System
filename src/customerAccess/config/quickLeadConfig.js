@@ -15,6 +15,7 @@ export const quickLeadConfig = {
     delivery: "link",
     redirectToVerifyPage: false,
     successRedirect: "/verify/verified-lead",
+    verifiedContentRedirect: "/verify/verified-lead",
     expiresInMinutes: 15,
     expiresInHours: 24,
     promptForPhoneChannel: true,
@@ -26,7 +27,7 @@ export const quickLeadConfig = {
   submit: {
     endpoint: "/api/capture/lead",
     buttonLabel: "Join List",
-    successMessage: "Thanks. Your info was submitted.",
+    successMessage: "Your info was submitted.",
     successRedirect: "/verify/link-sent",
     redirectDelayMs: 1200,
   },

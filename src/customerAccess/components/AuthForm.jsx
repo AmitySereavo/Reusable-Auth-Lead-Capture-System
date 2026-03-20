@@ -8,7 +8,7 @@ import "../styles/auth.css";
 import { siteConfig } from "../config/siteConfig";
 
 import { AUTH_MESSAGES } from "../config/authMessages";
-import { setPendingVerificationIdentifier } from "../utils/verificationSession";
+import { setPendingVerificationContext } from "../utils/verificationSession";
 import { parseIdentifier } from "../utils/identifier";
 
 function getDefaultValue(settings, meta) {
@@ -44,6 +44,7 @@ export default function AuthForm({
 
   const initialFormData = useMemo(() => {
     const values = {};
+
     visibleFields.forEach(({ key, settings, meta }) => {
       values[key] = getDefaultValue(settings, meta);
     });
@@ -64,10 +65,7 @@ export default function AuthForm({
   const verificationConfig = config.verification || {};
   const phoneChannelEnabled = !!verificationConfig.promptForPhoneChannel;
 
-  const identifierValue =
-    formData.identifier ||
-    formData.phone ||
-    "";
+  const identifierValue = formData.identifier || formData.phone || "";
 
   const parsedIdentifier = useMemo(() => {
     return parseIdentifier(identifierValue);
@@ -114,14 +112,44 @@ export default function AuthForm({
 
     if (error) return error;
 
-    if (
-      shouldShowPhoneChannelChoice &&
-      !formData.phoneVerificationChannel
-    ) {
+    if (shouldShowPhoneChannelChoice && !formData.phoneVerificationChannel) {
       return "Choose whether to receive verification by WhatsApp or SMS.";
     }
 
     return null;
+  }
+
+  function getPostSubmitRedirect(data, submitConfig, verificationConfig) {
+    if (data?.postSubmitRedirect) {
+      return data.postSubmitRedirect;
+    }
+
+    if (data?.alreadyVerifiedForSubmittedChannel) {
+      return (
+        verificationConfig.verifiedContentRedirect ||
+        submitConfig.alreadyVerifiedRedirect ||
+        submitConfig.successRedirect ||
+        null
+      );
+    }
+
+    return submitConfig.successRedirect || null;
+  }
+
+  function buildPendingVerificationContext(payload, identifier, parsed) {
+    return {
+      identifier,
+      delivery: verificationConfig.delivery || "code",
+      method: verificationConfig.method || "same-as-identifier",
+      target: config.target || null,
+      successRedirect: verificationConfig.successRedirect || null,
+      expiresInMinutes: verificationConfig.expiresInMinutes,
+      expiresInHours: verificationConfig.expiresInHours,
+      phoneChannel:
+        parsed.type === "phone"
+          ? payload.phoneVerificationChannel || null
+          : null,
+    };
   }
 
   async function handleSubmit(e) {
@@ -142,6 +170,15 @@ export default function AuthForm({
       const payload = { ...formData };
       const submitConfig = config.submit || {};
 
+      const identifier =
+        payload.identifier || payload.email || payload.phone || "";
+
+      const parsedForSubmit = parseIdentifier(identifier);
+
+      const pendingVerificationContext = identifier
+        ? buildPendingVerificationContext(payload, identifier, parsedForSubmit)
+        : null;
+
       if (onSubmit) {
         await onSubmit({
           formData: payload,
@@ -149,6 +186,7 @@ export default function AuthForm({
           routes,
           setMessage,
           setMessageType,
+          pendingVerificationContext,
         });
         return;
       }
@@ -172,18 +210,23 @@ export default function AuthForm({
       setMessage(data.message || submitConfig.successMessage || "Success.");
       setMessageType("success");
 
-      const identifier =
-        payload.identifier || payload.email || payload.phone || "";
-
-      if (identifier) {
-        setPendingVerificationIdentifier(identifier);
-      }
-
-      if (
+      const shouldStartVerification =
         verificationConfig.required &&
         verificationConfig.autoStart !== false &&
-        identifier
-      ) {
+        identifier &&
+        data?.shouldStartVerification !== false;
+
+      const postSubmitRedirect = getPostSubmitRedirect(
+        data,
+        submitConfig,
+        verificationConfig
+      );
+
+      if (pendingVerificationContext?.identifier) {
+        setPendingVerificationContext(pendingVerificationContext);
+      }
+
+      if (shouldStartVerification) {
         await fetch("/api/verify/start", {
           method: "POST",
           headers: {
@@ -198,7 +241,7 @@ export default function AuthForm({
             target: config.target || null,
             successRedirect: verificationConfig.successRedirect || null,
             phoneChannel:
-              parsedIdentifier.type === "phone"
+              parsedForSubmit.type === "phone"
                 ? payload.phoneVerificationChannel || null
                 : null,
           }),
@@ -206,12 +249,11 @@ export default function AuthForm({
       }
 
       if (
-        verificationConfig.required &&
+        shouldStartVerification &&
         verificationConfig.redirectToVerifyPage &&
         identifier
       ) {
         const verifyPath = routes.verify || "/verify";
-        setPendingVerificationIdentifier(identifier);
 
         setTimeout(() => {
           window.location.href = verifyPath;
@@ -220,9 +262,9 @@ export default function AuthForm({
         return;
       }
 
-      if (submitConfig.successRedirect) {
+      if (postSubmitRedirect) {
         setTimeout(() => {
-          window.location.href = submitConfig.successRedirect;
+          window.location.href = postSubmitRedirect;
         }, submitConfig.redirectDelayMs || 1200);
       }
     } catch (error) {
@@ -338,12 +380,12 @@ export default function AuthForm({
               label: "Log in",
             }
           : routes.signup
-          ? {
-              prefix: "Need an account?",
-              href: routes.signup,
-              label: "Sign up",
-            }
-          : null
+            ? {
+                prefix: "Need an account?",
+                href: routes.signup,
+                label: "Sign up",
+              }
+            : null
       }
     >
       <form onSubmit={handleSubmit} className="auth-form">
@@ -358,9 +400,7 @@ export default function AuthForm({
           })}
 
         <button type="submit" disabled={loading}>
-          {loading
-            ? "Please wait..."
-            : config.submit?.buttonLabel || "Submit"}
+          {loading ? "Please wait..." : config.submit?.buttonLabel || "Submit"}
         </button>
       </form>
     </AuthShell>

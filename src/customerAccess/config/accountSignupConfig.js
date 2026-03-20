@@ -39,6 +39,8 @@ export const accountSignupConfig = {
     method: "same-as-identifier",
     delivery: "code",
     redirectToVerifyPage: true,
+    successRedirect: "/verify/verified-lead",
+    verifiedContentRedirect: "/verify/verified-lead",
     expiresInMinutes: 15,
     expiresInHours: 24,
     promptForPhoneChannel: true,

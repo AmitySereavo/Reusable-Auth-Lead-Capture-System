@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import VerifyForm from "@/customerAccess/components/VerifyForm";
 import AuthShell from "@/customerAccess/components/AuthShell";
 import { siteConfig } from "@/customerAccess/config/siteConfig";
+import { AUTH_MESSAGES } from "@/customerAccess/config/authMessages";
 
 export default function VerifyPageClient() {
   const searchParams = useSearchParams();
@@ -14,9 +15,7 @@ export default function VerifyPageClient() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(
-    token
-      ? "Click Verify below to confirm your details."
-      : ""
+    token ? AUTH_MESSAGES.verification.tokenFlow.initialMessage : ""
   );
   const [messageType, setMessageType] = useState("info");
   const [done, setDone] = useState(false);
@@ -25,7 +24,9 @@ export default function VerifyPageClient() {
     if (!token || loading || done) return;
 
     setLoading(true);
-    setMessage("Verifying your link...");
+    setMessage(
+      AUTH_MESSAGES?.verification?.verifyingLink || "Verifying your link..."
+    );
     setMessageType("info");
 
     try {
@@ -40,13 +41,21 @@ export default function VerifyPageClient() {
       const data = await res.json();
 
       if (!res.ok) {
-        setMessage(data.error || "Verification failed.");
+        setMessage(
+          data.error ||
+            AUTH_MESSAGES?.verification?.verificationFailed ||
+            "Verification failed."
+        );
         setMessageType("error");
         setDone(true);
         return;
       }
 
-      setMessage(data.message || "Verification successful.");
+      setMessage(
+        data.message ||
+          AUTH_MESSAGES?.verification?.verificationSuccess ||
+          "Verification successful."
+      );
       setMessageType("success");
       setDone(true);
 
@@ -56,7 +65,11 @@ export default function VerifyPageClient() {
         window.location.href = redirectTo;
       }, 1200);
     } catch (error) {
-      setMessage(error?.message || "Verification failed.");
+      setMessage(
+        error?.message ||
+          AUTH_MESSAGES?.verification?.verificationFailed ||
+          "Verification failed."
+      );
       setMessageType("error");
       setDone(true);
     } finally {
@@ -70,8 +83,8 @@ export default function VerifyPageClient() {
         title="Verify"
         subtitle={
           done
-            ? "Your verification request has been processed."
-            : "Review this step, then click Verify to continue."
+            ? AUTH_MESSAGES.verification.tokenFlow.subtitleDone
+            : AUTH_MESSAGES.verification.tokenFlow.subtitlePending
         }
         message={message}
         messageType={messageType}

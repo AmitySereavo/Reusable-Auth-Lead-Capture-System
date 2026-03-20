@@ -1,6 +1,20 @@
 import { prisma } from "@/lib/prisma";
 import { parseIdentifier } from "@/customerAccess/utils/identifier";
 
+function isAlreadyVerifiedForSubmittedChannel({ parsed, lead }) {
+  if (!parsed?.type || !lead) return false;
+
+  if (parsed.type === "email") {
+    return Boolean(lead.emailVerifiedAt);
+  }
+
+  if (parsed.type === "phone") {
+    return Boolean(lead.phoneVerifiedAt);
+  }
+
+  return false;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -36,16 +50,29 @@ export async function POST(request) {
       );
     }
 
-    const { email, phone } = parsed;
+    const { email, phone, type, normalizedIdentifier } = parsed;
 
     const existingLead = await prisma.lead.findFirst({
       where: email ? { email } : { phone },
     });
 
     if (existingLead) {
+      const alreadyVerifiedForSubmittedChannel =
+        isAlreadyVerifiedForSubmittedChannel({
+          parsed,
+          lead: existingLead,
+        });
+
       return Response.json({
-        message: "You are already on the list.",
+        message: alreadyVerifiedForSubmittedChannel
+          ? "You are already on the list."
+          : "You are already on the list. Please verify to continue.",
         lead: existingLead,
+        leadExists: true,
+        identifierType: type,
+        normalizedIdentifier,
+        alreadyVerifiedForSubmittedChannel,
+        shouldStartVerification: !alreadyVerifiedForSubmittedChannel,
       });
     }
 
@@ -70,6 +97,11 @@ export async function POST(request) {
     return Response.json({
       message: "Lead captured successfully.",
       lead,
+      leadExists: false,
+      identifierType: type,
+      normalizedIdentifier,
+      alreadyVerifiedForSubmittedChannel: false,
+      shouldStartVerification: true,
     });
   } catch (error) {
     console.error("LEAD CAPTURE ERROR:", error);

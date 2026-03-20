@@ -215,3 +215,40 @@
 .verification-code-box:focus {
   border-color: #111827;
 }
+
+.auth-radio-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-radio-group legend {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 2px;
+}
+
+.auth-radio-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.auth-radio-option {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 500 !important;
+  color: #1f2937;
+}
+
+.auth-radio-option input {
+  width: auto;
+  margin: 0;
+}

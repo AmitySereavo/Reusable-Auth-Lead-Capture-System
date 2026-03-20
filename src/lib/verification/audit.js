@@ -39,3 +39,49 @@ export async function createVerificationDeliveryAttempt({
     console.error("VERIFICATION DELIVERY AUDIT LOG ERROR:", error);
   }
 }
+
+export async function updateVerificationDeliveryAttemptByProviderMessageId({
+  providerMessageId,
+  status,
+  ok = null,
+  errorCode = null,
+  errorMessage = null,
+  errorCategory = null,
+  metadataPatch = null,
+}) {
+  if (!providerMessageId) return null;
+
+  try {
+    const existing = await prisma.verificationDeliveryAttempt.findFirst({
+      where: { providerMessageId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const mergedMetadata =
+      metadataPatch && existing.metadata && typeof existing.metadata === "object"
+        ? {
+            ...existing.metadata,
+            ...metadataPatch,
+          }
+        : metadataPatch || existing.metadata || null;
+
+    return await prisma.verificationDeliveryAttempt.update({
+      where: { id: existing.id },
+      data: {
+        status: status ?? existing.status,
+        ok: ok ?? existing.ok,
+        errorCode: errorCode ?? existing.errorCode,
+        errorMessage: errorMessage ?? existing.errorMessage,
+        errorCategory: errorCategory ?? existing.errorCategory,
+        metadata: mergedMetadata,
+      },
+    });
+  } catch (error) {
+    console.error("VERIFICATION DELIVERY AUDIT UPDATE ERROR:", error);
+    return null;
+  }
+}

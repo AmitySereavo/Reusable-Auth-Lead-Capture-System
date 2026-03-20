@@ -26,12 +26,22 @@ export const AUTH_MESSAGES = {
     codeExpired: "Code expired. Please request a new code.",
     invalidCode: "Invalid code. Please use the most recent code sent to you.",
     verificationSuccess: "Verification successful",
+    verificationFailed: "Verification failed.",
+    verifyingLink: "Verifying your link...",
     noMatchingRecord: "No matching user or lead found.",
     noSessionFound: "No verification session found. Please sign up or log in again.",
     noIdentifierForVerification: "No identifier found for verification.",
     incompleteCode: "Please enter the full verification code.",
     autoCodeSent: "A verification code has been sent.",
     resendCodeSent: "A new verification code has been sent.",
+    autoLinkSent: "A verification link has been sent.",
+    resendLinkSent: "A new verification link has been sent.",
+
+    tokenFlow: {
+      initialMessage: "Click Verify to confirm your details.",
+      subtitlePending: "Review this step, then click Verify to continue.",
+      subtitleDone: "Your verification request has been processed.",
+    },
   },
 
   lead: {

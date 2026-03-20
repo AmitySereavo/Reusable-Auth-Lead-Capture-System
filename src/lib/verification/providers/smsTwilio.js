@@ -26,11 +26,30 @@ function getTwilioClient() {
   return twilioClient;
 }
 
+function getStatusCallbackUrl() {
+  const explicit = process.env.TWILIO_STATUS_CALLBACK_URL;
+  if (explicit) {
+    return explicit;
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!baseUrl) {
+    return null;
+  }
+
+  return `${baseUrl.replace(/\/+$/, "")}/api/webhooks/twilio/status`;
+}
+
 function buildTwilioPayload({ to, from, messagingServiceSid, text }) {
   const payload = {
     to,
     body: text,
   };
+
+  const statusCallback = getStatusCallbackUrl();
+  if (statusCallback) {
+    payload.statusCallback = statusCallback;
+  }
 
   if (messagingServiceSid) {
     payload.messagingServiceSid = messagingServiceSid;

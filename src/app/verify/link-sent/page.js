@@ -3,21 +3,42 @@
 import { useEffect, useState } from "react";
 import AuthShell from "@/customerAccess/components/AuthShell";
 import { siteConfig } from "@/customerAccess/config/siteConfig";
-import { getPendingVerificationIdentifier } from "@/customerAccess/utils/verificationSession";
+import { getPendingVerificationContext } from "@/customerAccess/utils/verificationSession";
+import { isEmail } from "@/customerAccess/utils/identifier";
+
+function maskEmail(email) {
+  const [local, domain] = String(email).split("@");
+  if (!local || !domain) return email;
+  const visible = local.slice(0, 2);
+  return `${visible}${"*".repeat(Math.max(local.length - 2, 3))}@${domain}`;
+}
+
+function maskPhone(phone) {
+  const digits = String(phone).replace(/[^\d+]/g, "");
+  if (digits.length <= 4) return digits;
+  return `${"*".repeat(Math.max(digits.length - 4, 3))}${digits.slice(-4)}`;
+}
+
+function getMaskedIdentifier(identifier) {
+  if (!identifier) return "";
+  return isEmail(identifier) ? maskEmail(identifier) : maskPhone(identifier);
+}
 
 export default function VerificationLinkSentPage() {
-  const [identifier, setIdentifier] = useState("");
+  const [pendingContext, setPendingContext] = useState(null);
+  const [maskedIdentifier, setMaskedIdentifier] = useState("");
   const [message, setMessage] = useState(
-    "Open the verification link we sent, then confirm on the verification page."
+    "Open the verification link we sent and confirm your details."
   );
   const [messageType, setMessageType] = useState("info");
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    const storedIdentifier = getPendingVerificationIdentifier();
+    const storedContext = getPendingVerificationContext();
 
-    if (storedIdentifier) {
-      setIdentifier(storedIdentifier);
+    if (storedContext?.identifier) {
+      setPendingContext(storedContext);
+      setMaskedIdentifier(getMaskedIdentifier(storedContext.identifier));
       return;
     }
 
@@ -26,7 +47,7 @@ export default function VerificationLinkSentPage() {
   }, []);
 
   async function resendLink() {
-    if (!identifier) {
+    if (!pendingContext?.identifier) {
       setMessage("No identifier found for resend.");
       setMessageType("error");
       return;
@@ -43,11 +64,15 @@ export default function VerificationLinkSentPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          identifier,
-          delivery: "link",
-          method: "same-as-identifier",
-          target: "lead",
-          successRedirect: siteConfig.routes.verifiedLead,
+          identifier: pendingContext.identifier,
+          delivery: pendingContext.delivery || "link",
+          method: pendingContext.method || "same-as-identifier",
+          target: pendingContext.target || "lead",
+          successRedirect:
+            pendingContext.successRedirect || siteConfig.routes.verifiedLead,
+          expiresInMinutes: pendingContext.expiresInMinutes,
+          expiresInHours: pendingContext.expiresInHours,
+          phoneChannel: pendingContext.phoneChannel || null,
         }),
       });
 
@@ -59,11 +84,7 @@ export default function VerificationLinkSentPage() {
         return;
       }
 
-      setMessage(
-        data.message
-          ? `${data.message}. Open it and confirm on the verification page.`
-          : "Verification link resent. Open it and confirm on the verification page."
-      );
+      setMessage(data.message || "Verification link resent.");
       setMessageType("success");
     } catch (error) {
       setMessage(error?.message || "Could not resend verification link.");
@@ -75,8 +96,12 @@ export default function VerificationLinkSentPage() {
 
   return (
     <AuthShell
-      title="Check your inbox"
-      subtitle="Open the verification link we sent, then click Verify on the next page."
+      title="Check your messages"
+      subtitle={
+        maskedIdentifier
+          ? `We sent a verification link to ${maskedIdentifier}`
+          : "We sent your verification link"
+      }
       message={message}
       messageType={messageType}
     >
@@ -84,7 +109,7 @@ export default function VerificationLinkSentPage() {
         <button
           type="button"
           onClick={resendLink}
-          disabled={sending || !identifier}
+          disabled={sending || !pendingContext?.identifier}
         >
           {sending ? "Sending..." : "Resend Link"}
         </button>
