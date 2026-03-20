@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AuthShell from "./AuthShell";
 import { fieldRegistry } from "../config/fieldRegistry";
 import { validateFormFields } from "../utils/validation";
@@ -9,6 +9,7 @@ import { siteConfig } from "../config/siteConfig";
 
 import { AUTH_MESSAGES } from "../config/authMessages";
 import { setPendingVerificationIdentifier } from "../utils/verificationSession";
+import { parseIdentifier } from "../utils/identifier";
 
 function getDefaultValue(settings, meta) {
   if (settings && Object.prototype.hasOwnProperty.call(settings, "defaultValue")) {
@@ -22,12 +23,10 @@ function getDefaultValue(settings, meta) {
 }
 
 export default function AuthForm({
-
   businessName = siteConfig.businessName,
   config,
   routes = {},
   footerLinks = siteConfig.footerLinks,
-
   title,
   subtitle,
   onSubmit,
@@ -48,13 +47,60 @@ export default function AuthForm({
     visibleFields.forEach(({ key, settings, meta }) => {
       values[key] = getDefaultValue(settings, meta);
     });
+
+    if (!Object.prototype.hasOwnProperty.call(values, "phoneVerificationChannel")) {
+      values.phoneVerificationChannel =
+        config.verification?.defaultPhoneChannel || "";
+    }
+
     return values;
-  }, [visibleFields]);
+  }, [visibleFields, config]);
 
   const [formData, setFormData] = useState(initialFormData);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("error");
   const [loading, setLoading] = useState(false);
+
+  const verificationConfig = config.verification || {};
+  const phoneChannelEnabled = !!verificationConfig.promptForPhoneChannel;
+
+  const identifierValue =
+    formData.identifier ||
+    formData.phone ||
+    "";
+
+  const parsedIdentifier = useMemo(() => {
+    return parseIdentifier(identifierValue);
+  }, [identifierValue]);
+
+  const isDetectedPhone = parsedIdentifier.type === "phone";
+  const shouldShowPhoneChannelChoice =
+    phoneChannelEnabled && isDetectedPhone;
+
+  useEffect(() => {
+    if (!shouldShowPhoneChannelChoice && formData.phoneVerificationChannel) {
+      setFormData((prev) => ({
+        ...prev,
+        phoneVerificationChannel: "",
+      }));
+      return;
+    }
+
+    if (
+      shouldShowPhoneChannelChoice &&
+      !formData.phoneVerificationChannel &&
+      verificationConfig.defaultPhoneChannel
+    ) {
+      setFormData((prev) => ({
+        ...prev,
+        phoneVerificationChannel: verificationConfig.defaultPhoneChannel,
+      }));
+    }
+  }, [
+    shouldShowPhoneChannelChoice,
+    formData.phoneVerificationChannel,
+    verificationConfig.defaultPhoneChannel,
+  ]);
 
   function updateField(name, value) {
     setFormData((prev) => ({
@@ -64,7 +110,18 @@ export default function AuthForm({
   }
 
   function validateForm() {
-    return validateFormFields(visibleFields, formData);
+    const error = validateFormFields(visibleFields, formData);
+
+    if (error) return error;
+
+    if (
+      shouldShowPhoneChannelChoice &&
+      !formData.phoneVerificationChannel
+    ) {
+      return "Choose whether to receive verification by WhatsApp or SMS.";
+    }
+
+    return null;
   }
 
   async function handleSubmit(e) {
@@ -84,7 +141,6 @@ export default function AuthForm({
     try {
       const payload = { ...formData };
       const submitConfig = config.submit || {};
-      const verificationConfig = config.verification || {};
 
       if (onSubmit) {
         await onSubmit({
@@ -141,6 +197,10 @@ export default function AuthForm({
             delivery: verificationConfig.delivery || "code",
             target: config.target || null,
             successRedirect: verificationConfig.successRedirect || null,
+            phoneChannel:
+              parsedIdentifier.type === "phone"
+                ? payload.phoneVerificationChannel || null
+                : null,
           }),
         });
       }
@@ -188,6 +248,29 @@ export default function AuthForm({
           />
           <span>{meta.label}</span>
         </label>
+      );
+    }
+
+    if (meta.type === "radio") {
+      return (
+        <fieldset key={key} className="auth-radio-group">
+          <legend>{meta.label}</legend>
+          <div className="auth-radio-options">
+            {meta.options?.map((option) => (
+              <label key={option.value} className="auth-radio-option">
+                <input
+                  type="radio"
+                  name={key}
+                  value={option.value}
+                  checked={formData[key] === option.value}
+                  onChange={(e) => updateField(key, e.target.value)}
+                  required={!!settings.required}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
       );
     }
 
@@ -265,6 +348,14 @@ export default function AuthForm({
     >
       <form onSubmit={handleSubmit} className="auth-form">
         {visibleFields.map(renderField)}
+
+        {shouldShowPhoneChannelChoice &&
+          fieldRegistry.phoneVerificationChannel &&
+          renderField({
+            key: "phoneVerificationChannel",
+            settings: { visible: true, required: true },
+            meta: fieldRegistry.phoneVerificationChannel,
+          })}
 
         <button type="submit" disabled={loading}>
           {loading

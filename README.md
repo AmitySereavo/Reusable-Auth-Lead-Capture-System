@@ -56,6 +56,9 @@ This project is designed to be adapted across different websites and businesses 
 - Resend integration for email
 - Console providers for local/dev testing
 - Twilio SMS transport support
+- WhatsApp verification channel support
+- direct Meta WhatsApp provider support
+- phone verification channel choice in UI when a phone number is detected
 - Dev-safe Resend test routing
 - Normalized delivery result structure
 - Delivery-attempt audit logging in Prisma
@@ -201,6 +204,10 @@ src/
 ---
 
 ## Current Working Verification Behavior
+
+- when identifier input is recognized as phone during typing, the UI can reveal a phone verification channel choice
+
+-phone verification can be sent through SMS or WhatsApp depending on flow config and user choice
 
 ### Lead Flow
 
@@ -382,6 +389,11 @@ TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 TWILIO_AUTH_TOKEN="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 TWILIO_SMS_FROM="+1XXXXXXXXXX"
 TWILIO_MESSAGING_SERVICE_SID=""
+
+WHATSAPP_ACCESS_TOKEN=""
+WHATSAPP_PHONE_NUMBER_ID=""
+WHATSAPP_BUSINESS_ACCOUNT_ID=""
+WHATSAPP_FROM=""
 ```
 
 Notes:
@@ -657,6 +669,10 @@ It can vary by flow, for example:
 
 Verification delivery is abstracted so route handlers do not contain provider-specific logic.
 
+- email → Resend / console
+- sms → Twilio / console
+- whatsapp → Meta WhatsApp API / console
+
 ### Delivery Layer
 
 Main files:
@@ -686,13 +702,13 @@ src/customerAccess/config/verificationContent.js
 
 ### Current Product Direction
 
-Although Twilio transport support exists, the current recommended live direction is:
+email remains the most reliable active channel
 
-- use **email** as the active verification channel
-- collect **phone / WhatsApp number** as contact data where needed
-- leave SMS as supported infrastructure for later expansion
+phone numbers can trigger user choice of SMS or WhatsApp
 
-This keeps the reusable system extensible while avoiding unnecessary delivery/regulatory complexity early.
+WhatsApp support exists in the architecture and is being integrated directly via the Meta API
+
+SMS can remain available without being the main product focus
 
 ### Dev-Safe Email Testing
 
@@ -1011,5 +1027,6 @@ Current practical direction:
 ## License
 
 Add your preferred license here.
-#   R e u s a b l e - A u t h - L e a d - C a p t u r e - S y s t e m  
+#   R e u s a b l e - A u t h - L e a d - C a p t u r e - S y s t e m 
+ 
  

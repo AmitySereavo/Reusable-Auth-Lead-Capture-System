@@ -4,6 +4,7 @@ import { sendEmailVerification } from "./providers/emailConsole";
 import { sendEmailVerificationWithResend } from "./providers/emailResend";
 import { sendSmsVerification } from "./providers/smsConsole";
 import { sendSmsVerificationWithTwilio } from "./providers/smsTwilio";
+import { sendWhatsAppVerificationWithMeta } from "./providers/whatsappMeta";
 import { createVerificationDeliveryAttempt } from "./audit";
 import { buildDeliveryErrorResult, normalizeProviderError } from "./result";
 
@@ -11,8 +12,35 @@ function isEmailIdentifier(identifier) {
   return typeof identifier === "string" && identifier.includes("@");
 }
 
-function getChannelKey(identifier) {
-  return isEmailIdentifier(identifier) ? "email" : "sms";
+function resolveChannel({ identifier, phoneChannel = null }) {
+  if (isEmailIdentifier(identifier)) {
+    return "email";
+  }
+
+  if (phoneChannel === "whatsapp") {
+    return "whatsapp";
+  }
+
+  return "sms";
+}
+
+function getProviderForChannel(channel) {
+  if (channel === "email") {
+    return verificationProviders.email;
+  }
+
+  if (channel === "sms") {
+    return verificationProviders.sms;
+  }
+
+  if (channel === "whatsapp") {
+    return verificationProviders.whatsapp || {
+      mode: "console",
+      from: null,
+    };
+  }
+
+  throw new Error(`Unsupported verification channel: ${channel}`);
 }
 
 function resolveContentConfig({ delivery, channel, target = null }) {
@@ -38,11 +66,12 @@ function resolveContentConfig({ delivery, channel, target = null }) {
 function getResolvedContent({
   identifier,
   delivery,
+  phoneChannel = null,
   code = null,
   verifyUrl = null,
   target = null,
 }) {
-  const channel = getChannelKey(identifier);
+  const channel = resolveChannel({ identifier, phoneChannel });
   const config = resolveContentConfig({
     delivery,
     channel,
@@ -130,10 +159,11 @@ async function sendEmailViaProvider({
   throw new Error(`Unsupported email provider mode: ${provider.mode}`);
 }
 
-async function sendSmsViaProvider({
+async function sendSmsLikeViaProvider({
   provider,
   identifier,
   text,
+  channel,
 }) {
   if (provider.mode === "console") {
     return sendSmsVerification({
@@ -141,11 +171,11 @@ async function sendSmsViaProvider({
       originalTo: identifier,
       rewritten: false,
       from: provider.from,
-      text,
+      text: channel === "whatsapp" ? `[WhatsApp] ${text}` : text,
     });
   }
 
-  if (provider.mode === "twilio") {
+  if (channel === "sms" && provider.mode === "twilio") {
     return sendSmsVerificationWithTwilio({
       to: identifier,
       originalTo: identifier,
@@ -156,7 +186,16 @@ async function sendSmsViaProvider({
     });
   }
 
-  throw new Error(`Unsupported sms provider mode: ${provider.mode}`);
+  if (channel === "whatsapp" && provider.mode === "meta") {
+    return sendWhatsAppVerificationWithMeta({
+      to: identifier,
+      originalTo: identifier,
+      rewritten: false,
+      text,
+    });
+  }
+
+  throw new Error(`Unsupported ${channel} provider mode: ${provider.mode}`);
 }
 
 function getFallbackProviderName({ channel, provider }) {
@@ -164,16 +203,23 @@ function getFallbackProviderName({ channel, provider }) {
     return provider.mode === "resend" ? "resend" : "email-console";
   }
 
-  if (provider.mode === "twilio") {
-    return "twilio";
+  if (channel === "sms") {
+    return provider.mode === "twilio" ? "twilio" : "sms-console";
   }
 
-  return "sms-console";
+  if (channel === "whatsapp") {
+    return provider.mode === "meta"
+      ? "meta-whatsapp"
+      : "whatsapp-console";
+  }
+
+  return "unknown";
 }
 
 export async function sendVerificationDelivery({
   identifier,
   delivery,
+  phoneChannel = null,
   code = null,
   verifyUrl = null,
   target = null,
@@ -193,15 +239,13 @@ export async function sendVerificationDelivery({
   const content = getResolvedContent({
     identifier,
     delivery,
+    phoneChannel,
     code,
     verifyUrl,
     target,
   });
 
-  const provider =
-    content.channel === "email"
-      ? verificationProviders.email
-      : verificationProviders.sms;
+  const provider = getProviderForChannel(content.channel);
 
   try {
     const result =
@@ -213,10 +257,11 @@ export async function sendVerificationDelivery({
             text: content.text,
             html: content.html,
           })
-        : await sendSmsViaProvider({
+        : await sendSmsLikeViaProvider({
             provider,
             identifier,
             text: content.text,
+            channel: content.channel,
           });
 
     await createVerificationDeliveryAttempt({
@@ -230,6 +275,7 @@ export async function sendVerificationDelivery({
       contextMetadata: {
         ...(contextMetadata || {}),
         contentChannel: content.channel,
+        requestedPhoneChannel: phoneChannel,
       },
     });
 
@@ -263,6 +309,7 @@ export async function sendVerificationDelivery({
       contextMetadata: {
         ...(contextMetadata || {}),
         contentChannel: content.channel,
+        requestedPhoneChannel: phoneChannel,
         exception: true,
       },
     });

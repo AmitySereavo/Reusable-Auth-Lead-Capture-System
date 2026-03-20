@@ -68,6 +68,16 @@ export const fieldRegistry = {
     },
   },
 
+  phoneVerificationChannel: {
+    name: "phoneVerificationChannel",
+    label: "Send verification code by",
+    type: "radio",
+    options: [
+      { label: "WhatsApp", value: "whatsapp" },
+      { label: "SMS", value: "sms" },
+    ],
+  },
+
   password: {
     name: "password",
     label: "Password",

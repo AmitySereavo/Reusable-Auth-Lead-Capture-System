@@ -8,6 +8,8 @@ import crypto from "crypto";
 const RESEND_COOLDOWN_SECONDS =
   AUTH_RULES.verification.resendCooldownSeconds;
 
+const ALLOWED_PHONE_CHANNELS = ["sms", "whatsapp"];
+
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -75,6 +77,7 @@ export async function POST(request) {
       target = null,
       successRedirect = null,
       contextMetadata = null,
+      phoneChannel = null,
     } = await request.json();
 
     if (!identifier) {
@@ -100,7 +103,20 @@ export async function POST(request) {
       );
     }
 
-    const { email, phone, normalizedIdentifier } = parsed;
+    const { email, phone, normalizedIdentifier, type } = parsed;
+
+    const resolvedPhoneChannel =
+      type === "phone" ? phoneChannel || "sms" : null;
+
+    if (
+      resolvedPhoneChannel &&
+      !ALLOWED_PHONE_CHANNELS.includes(resolvedPhoneChannel)
+    ) {
+      return Response.json(
+        { error: "Invalid phone verification channel." },
+        { status: 400 }
+      );
+    }
 
     const user = await prisma.user.findFirst({
       where: email ? { email } : { phone },
@@ -181,16 +197,25 @@ export async function POST(request) {
         target,
         successRedirect,
         verificationTokenId: verificationToken.id,
-        contextMetadata,
+        phoneChannel: resolvedPhoneChannel,
+        contextMetadata: {
+          ...(contextMetadata || {}),
+          parsedIdentifierType: type,
+          phoneChannel: resolvedPhoneChannel,
+        },
       });
 
       if (!deliveryResult.ok) {
         return Response.json(
           {
-            error: deliveryResult.error?.message || "Failed to send verification link.",
+            error:
+              deliveryResult.error?.message ||
+              "Failed to send verification link.",
             delivery,
+            method,
             target,
             successRedirect,
+            phoneChannel: resolvedPhoneChannel,
             provider: deliveryResult.provider,
             deliveryResult,
           },
@@ -204,6 +229,7 @@ export async function POST(request) {
         method,
         target,
         successRedirect,
+        phoneChannel: resolvedPhoneChannel,
         provider: deliveryResult.provider,
         deliveryResult,
       });
@@ -259,16 +285,25 @@ export async function POST(request) {
       target,
       successRedirect,
       verificationCodeId: verificationCode.id,
-      contextMetadata,
+      phoneChannel: resolvedPhoneChannel,
+      contextMetadata: {
+        ...(contextMetadata || {}),
+        parsedIdentifierType: type,
+        phoneChannel: resolvedPhoneChannel,
+      },
     });
 
     if (!deliveryResult.ok) {
       return Response.json(
         {
-          error: deliveryResult.error?.message || "Failed to send verification code.",
+          error:
+            deliveryResult.error?.message ||
+            "Failed to send verification code.",
           delivery: "code",
+          method,
           target,
           successRedirect,
+          phoneChannel: resolvedPhoneChannel,
           provider: deliveryResult.provider,
           deliveryResult,
         },
@@ -282,6 +317,7 @@ export async function POST(request) {
       method,
       target,
       successRedirect,
+      phoneChannel: resolvedPhoneChannel,
       provider: deliveryResult.provider,
       deliveryResult,
     });

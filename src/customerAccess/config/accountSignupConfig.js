@@ -40,6 +40,11 @@ export const accountSignupConfig = {
     delivery: "code",
     redirectToVerifyPage: true,
     expiresInMinutes: 15,
+    expiresInHours: 24,
+    promptForPhoneChannel: true,
+    defaultPhoneChannel: "whatsapp",
+    phoneChannelOptions: ["whatsapp", "sms"],
+    phoneChannelLabel: "Send verification by",
   },
 
   submit: {
