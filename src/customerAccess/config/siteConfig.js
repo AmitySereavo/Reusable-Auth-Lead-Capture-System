@@ -12,5 +12,8 @@ export const siteConfig = {
     dashboard: "/dashboard",
     verifiedLead: "/verify/verified-lead",
     verifyLinkSent: "/verify/link-sent",
+    forgotPassword: "/forgot-password",
+    forgotPasswordCode: "/forgot-password/code",
+    resetPassword: "/reset-password",
   },
 };

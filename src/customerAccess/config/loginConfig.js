@@ -9,6 +9,7 @@ export const loginConfig = {
       required: true,
       label: "Email or phone",
       placeholder: "Enter your email or phone",
+      helpText: "If using a phone number, include country code and area code.",
       validation: {
         identifier: true,
         minPhoneLength: AUTH_RULES.phone.minLength,

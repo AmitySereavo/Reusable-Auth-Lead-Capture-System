@@ -3,9 +3,7 @@ import "../styles/auth.css";
 import { siteConfig } from "../config/siteConfig";
 
 export default function AuthShell({
-
   businessName = siteConfig.businessName,
-  
   title = "Get Started",
   subtitle = "",
   message = "",
@@ -13,6 +11,7 @@ export default function AuthShell({
   footerLinks = siteConfig.footerLinks,
   children,
   bottomLinks,
+  auxiliaryLinks = [],
 }) {
   const messageClassName = message
     ? `auth-message auth-message-${messageType}`
@@ -29,6 +28,16 @@ export default function AuthShell({
         {children}
 
         {message ? <p className={messageClassName}>{message}</p> : null}
+
+        {auxiliaryLinks?.length ? (
+          <div className="auth-switch">
+            {auxiliaryLinks.map((link, index) => (
+              <div key={`${link.href}-${index}`}>
+                <Link href={link.href}>{link.label}</Link>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {bottomLinks ? (
           <div className="auth-switch">

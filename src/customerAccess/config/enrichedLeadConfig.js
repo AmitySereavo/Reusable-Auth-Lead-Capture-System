@@ -4,7 +4,7 @@ export const enrichedLeadConfig = {
 
   fields: {
     fullName: { visible: true, required: true },
-    identifier: { visible: true, required: true, allow: ["email", "phone"] },
+    identifier: { visible: true, required: true, allow: ["email", "phone"],helpText: "If using a phone number, include country code and area code.", },
     country: { visible: true, required: false },
     city: { visible: true, required: false },
     preferredContactMethod: { visible: true, required: false },

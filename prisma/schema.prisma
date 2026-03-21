@@ -8,18 +8,21 @@ datasource db {
 }
 
 model User {
-  id               Int       @id @default(autoincrement())
-  email            String?   @unique
-  phone            String?   @unique
-  password         String
-  name             String?
-  country          String?
-  city             String?
-  adminLevel       Int       @default(0)
-  emailVerifiedAt  DateTime?
-  phoneVerifiedAt  DateTime?
-  createdAt        DateTime  @default(now())
-  sessions         Session[]
+  id                         Int                        @id @default(autoincrement())
+  email                      String?                    @unique
+  phone                      String?                    @unique
+  password                   String
+  name                       String?
+  country                    String?
+  city                       String?
+  adminLevel                 Int                        @default(0)
+  emailVerifiedAt            DateTime?
+  phoneVerifiedAt            DateTime?
+  createdAt                  DateTime                   @default(now())
+  sessions                   Session[]
+  passwordResetTokens        PasswordResetToken[]
+  passwordResetChallenges    PasswordResetChallenge[]
+  passwordResetAccessGrants  PasswordResetAccessGrant[]
 }
 
 model Session {
@@ -122,4 +125,53 @@ model Lead {
   emailVerifiedAt        DateTime?
   phoneVerifiedAt        DateTime?
   createdAt              DateTime  @default(now())
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId      Int
+  identifier  String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([identifier])
+  @@index([expiresAt])
+}
+
+model PasswordResetChallenge {
+  id          String   @id @default(cuid())
+  userId       Int
+  identifier   String
+  channel      String
+  codeHash     String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([identifier])
+  @@index([channel])
+  @@index([expiresAt])
+}
+
+model PasswordResetAccessGrant {
+  id         String   @id @default(cuid())
+  userId      Int
+  grantHash   String   @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

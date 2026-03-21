@@ -12,6 +12,7 @@ export default function LoginForm({
     signup: siteConfig.routes.signup,
     dashboard: siteConfig.routes.dashboard,
     verify: siteConfig.routes.verify,
+    forgotPassword: siteConfig.routes.forgotPassword,
   },
   footerLinks = siteConfig.footerLinks,
 }) {
@@ -39,7 +40,7 @@ export default function LoginForm({
       setMessageType("info");
 
       setTimeout(() => {
-        window.location.href = routes.verify || "/verify";
+        window.location.replace(routes.verify || "/verify");
       }, 800);
       return;
     }
@@ -49,7 +50,7 @@ export default function LoginForm({
       setMessageType("success");
 
       setTimeout(() => {
-        window.location.href = routes.dashboard || "/dashboard";
+        window.location.replace(routes.dashboard || "/dashboard");
       }, 1000);
       return;
     }
@@ -66,6 +67,11 @@ export default function LoginForm({
       footerLinks={footerLinks}
       title="Login"
       subtitle="Access your account"
+      auxiliaryLinks={
+        routes.forgotPassword
+          ? [{ href: routes.forgotPassword, label: "Forgot password?" }]
+          : []
+      }
       onSubmit={handleLoginSubmit}
     />
   );

@@ -9,6 +9,7 @@ export const accountSignupConfig = {
     identifier: {
       visible: true,
       required: true,
+      helpText: "If using a phone number, include country code and area code.",
       validation: {
         identifier: true,
         minPhoneLength: AUTH_RULES.phone.minLength,

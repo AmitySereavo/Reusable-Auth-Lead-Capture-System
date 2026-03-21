@@ -48,4 +48,24 @@ export const AUTH_MESSAGES = {
     leadExists: "You are already on the list.",
     leadCaptured: "Lead captured successfully.",
   },
+
+  passwordReset: {
+  requestAccepted:
+    "If the account can be recovered through that channel, reset instructions have been sent.",
+  emailLinkSentNeutral:
+    "If an account matches that email, a reset link has been sent.",
+  phoneCodeSentNeutral:
+    "If an account matches that phone number, reset instructions have been processed.",
+  codeSent: "A password reset code has been sent.",
+  choosePhoneChannel: "Choose whether to receive the reset code by WhatsApp or SMS.",
+  invalidCode: "Invalid reset code. Please use the most recent code sent to you.",
+  codeExpired: "That reset code has expired. Please request a new one.",
+  tooManyCodeAttempts: "Too many incorrect attempts. Please request a new code.",
+  codeVerified: "Code verified. You can now reset your password.",
+  passwordRequired: "Enter and confirm your new password.",
+  passwordsDoNotMatch: "Passwords do not match.",
+  invalidOrExpiredLink: "This reset link is invalid or has expired.",
+  resetAccessRequired: "You need a valid reset link or verified reset code to continue.",
+  passwordResetSuccess: "Password reset successful. Please log in.",
+},
 };

@@ -107,6 +107,44 @@ export const verificationContent = {
             `Please confirm your details using this link: ${verifyUrl}`,
         },
       },
-    },
-  },
-};
+    },//end of lead
+    passwordReset: {
+      code: {
+        email: {
+          subject: "Your password reset code",
+          getText: ({ code }) =>
+            `Use this code to continue resetting your password: ${code}`,
+          getHtml: ({ code }) =>
+            `<p>Use this code to continue resetting your password:</p><p><strong>${code}</strong></p>`,
+        },
+        sms: {
+          getText: ({ code }) =>
+            `Use this code to continue resetting your password: ${code}`,
+        },
+        whatsapp: {
+          getText: ({ code }) =>
+            `Use this code to continue resetting your password: ${code}`,
+        },
+      },
+      link: {
+        email: {
+          subject: "Reset your password",
+          getText: ({ verifyUrl }) =>
+            `Use this link to reset your password: ${verifyUrl}`,
+          getHtml: ({ verifyUrl }) =>
+            `<p>Use this link to reset your password:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
+        },
+        sms: {
+          getText: ({ verifyUrl }) =>
+            `Use this link to reset your password: ${verifyUrl}`,
+        },
+        whatsapp: {
+          getText: ({ verifyUrl }) =>
+            `Use this link to reset your password: ${verifyUrl}`,
+        },
+      },
+    },//end of passwordReset
+
+  },//end of targets
+
+};//end of verificationContent

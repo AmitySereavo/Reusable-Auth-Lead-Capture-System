@@ -27,6 +27,6 @@ export function clearPendingVerificationContext() {
   window.localStorage.removeItem(PENDING_VERIFICATION_CONTEXT_KEY);
 }
 
-export function hasPendingVerificationIdentifier() {
-  return !!getPendingVerificationIdentifier();
+export function hasPendingVerificationContext() {
+  return !!getPendingVerificationContext();
 }

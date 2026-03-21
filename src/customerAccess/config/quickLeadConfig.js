@@ -4,7 +4,7 @@ export const quickLeadConfig = {
 
   fields: {
     fullName: { visible: true, required: true },
-    identifier: { visible: true, required: true, allow: ["email", "phone"] },
+    identifier: { visible: true, required: true, allow: ["email", "phone"],helpText: "If using a phone number, include country code and area code.", },
     updatesOptIn: { visible: true, required: false, defaultValue: true },
   },
 

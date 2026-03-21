@@ -30,6 +30,7 @@ export default function AuthForm({
   title,
   subtitle,
   onSubmit,
+  auxiliaryLinks = [],
 }) {
   const visibleFields = useMemo(() => {
     return Object.entries(config.fields)
@@ -275,10 +276,21 @@ export default function AuthForm({
     }
   }
 
+  function renderHelpText(settings, meta) {
+    const helpText = settings?.helpText || meta?.helpText || "";
+
+    if (!helpText) return null;
+
+    return <span className="auth-help-text">{helpText}</span>;
+  }
+
   function renderField(field) {
     const { key, settings, meta } = field;
 
     if (!meta) return null;
+
+    const label = settings?.label || meta.label;
+    const placeholder = settings?.placeholder || meta.placeholder;
 
     if (meta.type === "checkbox") {
       return (
@@ -288,7 +300,7 @@ export default function AuthForm({
             checked={!!formData[key]}
             onChange={(e) => updateField(key, e.target.checked)}
           />
-          <span>{meta.label}</span>
+          <span>{label}</span>
         </label>
       );
     }
@@ -296,7 +308,7 @@ export default function AuthForm({
     if (meta.type === "radio") {
       return (
         <fieldset key={key} className="auth-radio-group">
-          <legend>{meta.label}</legend>
+          <legend>{label}</legend>
           <div className="auth-radio-options">
             {meta.options?.map((option) => (
               <label key={option.value} className="auth-radio-option">
@@ -312,6 +324,7 @@ export default function AuthForm({
               </label>
             ))}
           </div>
+          {renderHelpText(settings, meta)}
         </fieldset>
       );
     }
@@ -319,7 +332,7 @@ export default function AuthForm({
     if (meta.type === "select") {
       return (
         <label key={key}>
-          {meta.label}
+          {label}
           <select
             value={formData[key] || ""}
             onChange={(e) => updateField(key, e.target.value)}
@@ -332,6 +345,7 @@ export default function AuthForm({
               </option>
             ))}
           </select>
+          {renderHelpText(settings, meta)}
         </label>
       );
     }
@@ -339,27 +353,29 @@ export default function AuthForm({
     if (meta.type === "file") {
       return (
         <label key={key}>
-          {meta.label}
+          {label}
           <input
             type="file"
             accept={meta.accept}
             onChange={(e) => updateField(key, e.target.files?.[0] || null)}
             required={!!settings.required}
           />
+          {renderHelpText(settings, meta)}
         </label>
       );
     }
 
     return (
       <label key={key}>
-        {meta.label}
+        {label}
         <input
           type={meta.type}
-          placeholder={meta.placeholder}
+          placeholder={placeholder}
           value={formData[key] || ""}
           onChange={(e) => updateField(key, e.target.value)}
           required={!!settings.required}
         />
+        {renderHelpText(settings, meta)}
       </label>
     );
   }
@@ -372,6 +388,7 @@ export default function AuthForm({
       message={message}
       messageType={messageType}
       footerLinks={footerLinks}
+      auxiliaryLinks={auxiliaryLinks}
       bottomLinks={
         routes.login
           ? {

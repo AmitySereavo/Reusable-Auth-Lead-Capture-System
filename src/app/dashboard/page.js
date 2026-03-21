@@ -1,9 +1,12 @@
-"use client";
+import { redirect } from "next/navigation";
+import { getSessionFromCookie } from "@/lib/auth/sessionServer";
+import LogoutButton from "./LogoutButton";
 
-export default function DashboardPage() {
-  async function handleLogout() {
-    await fetch("/api/logout", { method: "POST" });
-    window.location.href = "/login";
+export default async function DashboardPage() {
+  const session = await getSessionFromCookie();
+
+  if (!session?.user) {
+    redirect("/login");
   }
 
   return (
@@ -11,17 +14,7 @@ export default function DashboardPage() {
       <h1>Dashboard</h1>
       <p>You are logged in.</p>
 
-      <button
-        type="button"
-        onClick={handleLogout}
-        style={{
-          marginTop: "1rem",
-          padding: "0.75rem 1rem",
-          cursor: "pointer",
-        }}
-      >
-        Logout
-      </button>
+      <LogoutButton />
     </main>
   );
 }
