@@ -1,9 +1,31 @@
 export const verificationProviders = {
-  email: {
-    mode: process.env.RESEND_API_KEY ? "resend" : "console",
-    from: process.env.RESEND_FROM_EMAIL || "no-reply@example.com",
+    email: {
+    mode:
+      process.env.EMAIL_PROVIDER_MODE ||
+      (process.env.SMTP_HOST
+        ? "smtp"
+        : process.env.RESEND_API_KEY
+          ? "resend"
+          : "console"),
+
+    from:
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.RESEND_FROM_EMAIL ||
+      "no-reply@example.com",
+
     devTestMode: process.env.NODE_ENV !== "production",
-    devTestInbox: process.env.RESEND_DEV_TEST_EMAIL || "delivered@resend.dev",
+    devTestInbox:
+      process.env.EMAIL_DEV_TEST_INBOX ||
+      process.env.RESEND_DEV_TEST_EMAIL ||
+      "delivered@resend.dev",
+
+    smtp: {
+      host: process.env.SMTP_HOST || "",
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === "true",
+      user: process.env.SMTP_USER || "",
+      pass: process.env.SMTP_PASS || "",
+    },
   },
 
   sms: {

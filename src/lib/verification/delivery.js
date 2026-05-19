@@ -2,6 +2,7 @@ import { verificationProviders } from "@/customerAccess/config/verificationProvi
 import { verificationContent } from "@/customerAccess/config/verificationContent";
 import { sendEmailVerification } from "./providers/emailConsole";
 import { sendEmailVerificationWithResend } from "./providers/emailResend";
+import { sendEmailVerificationWithSmtp } from "./providers/emailSmtp";
 import { sendSmsVerification } from "./providers/smsConsole";
 import { sendSmsVerificationWithTwilio } from "./providers/smsTwilio";
 import { sendWhatsAppVerificationWithMeta } from "./providers/whatsappMeta";
@@ -156,6 +157,30 @@ async function sendEmailViaProvider({
     });
   }
 
+  if (provider.mode === "smtp") {
+    const recipient = resolveDevSafeEmailRecipient(provider, identifier);
+
+    const finalText = recipient.rewritten
+      ? `[DEV TEST MODE] Original recipient: ${recipient.originalTo}\n\n${text}`
+      : text;
+
+    const finalHtml =
+      recipient.rewritten && html
+        ? `<p><strong>[DEV TEST MODE]</strong> Original recipient: ${recipient.originalTo}</p>${html}`
+        : html;
+
+    return sendEmailVerificationWithSmtp({
+      to: recipient.to,
+      originalTo: recipient.originalTo,
+      rewritten: recipient.rewritten,
+      from: provider.from,
+      subject,
+      text: finalText,
+      html: finalHtml,
+      smtp: provider.smtp,
+    });
+  }
+
   throw new Error(`Unsupported email provider mode: ${provider.mode}`);
 }
 
@@ -225,10 +250,11 @@ async function sendSmsLikeViaProvider({
 }
 
 function getFallbackProviderName({ channel, provider }) {
-  if (channel === "email") {
-    return provider.mode === "resend" ? "resend" : "email-console";
+    if (channel === "email") {
+    if (provider.mode === "resend") return "resend";
+    if (provider.mode === "smtp") return "smtp";
+    return "email-console";
   }
-
   if (channel === "sms") {
     return provider.mode === "twilio" ? "twilio" : "sms-console";
   }

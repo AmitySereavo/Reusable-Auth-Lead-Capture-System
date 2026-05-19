@@ -1,9 +1,9 @@
-import { prisma } from "@/lib/prisma";
+import bcrypt from "bcrypt";
 import { AUTH_MESSAGES } from "@/customerAccess/config/authMessages";
 import { AUTH_RULES } from "@/customerAccess/config/authRules";
 import { parseIdentifier } from "@/customerAccess/utils/identifier";
-import bcrypt from "bcrypt";
 import { cleanupExpiredAuthRecords } from "@/lib/auth/cleanup";
+import { prisma } from "@/lib/prisma";
 import {
   checkRateLimit,
   getRateLimitKey,
@@ -16,6 +16,7 @@ const MAX_VERIFICATION_CODE_ATTEMPTS =
 export async function POST(request) {
   try {
     await cleanupExpiredAuthRecords();
+
     const { identifier, code } = await request.json();
 
     const rateLimit = checkRateLimit({
@@ -61,7 +62,7 @@ export async function POST(request) {
       );
     }
 
-        if (latestRecord.expiresAt < new Date()) {
+    if (latestRecord.expiresAt < new Date()) {
       await prisma.verificationCode.deleteMany({
         where: {
           identifier: normalizedIdentifier,
@@ -85,18 +86,7 @@ export async function POST(request) {
       );
     }
 
-        if ((latestRecord.attempts ?? 0) >= MAX_VERIFICATION_CODE_ATTEMPTS) {
-      return Response.json(
-        {
-          error:
-            AUTH_MESSAGES?.verification?.tooManyAttempts ||
-            "Too many incorrect attempts. Please request a new verification code.",
-        },
-        { status: 429 }
-      );
-    }
-
-    const codeMatches = await bcrypt.compare(code, latestRecord.code);
+    const codeMatches = await bcrypt.compare(String(code), latestRecord.code);
 
     if (!codeMatches) {
       await prisma.verificationCode.update({
