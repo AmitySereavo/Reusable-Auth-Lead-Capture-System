@@ -12,5 +12,39 @@ export const AUTH_RULES = {
     codeLength: 6,
     resendCooldownSeconds: 60,
     defaultExpiryMinutes: 10,
+    maxCodeAttempts: 5,
+  },
+  passwordReset: {
+    resendCooldownSeconds: 60,
+  },
+  rateLimit: {
+    signup: {
+      limit: 8,
+      windowSeconds: 15 * 60,
+    },
+    login: {
+      limit: 10,
+      windowSeconds: 10 * 60,
+    },
+    verificationStart: {
+      limit: 8,
+      windowSeconds: 10 * 60,
+    },
+    verificationCheck: {
+      limit: 12,
+      windowSeconds: 10 * 60,
+    },
+    passwordForgot: {
+      limit: 5,
+      windowSeconds: 15 * 60,
+    },
+    passwordVerifyCode: {
+      limit: 10,
+      windowSeconds: 10 * 60,
+    },
+    passwordReset: {
+      limit: 5,
+      windowSeconds: 15 * 60,
+    },
   },
 };

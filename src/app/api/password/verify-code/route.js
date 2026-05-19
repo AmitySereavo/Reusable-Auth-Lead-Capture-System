@@ -5,10 +5,26 @@ import {
   setPasswordResetAccessCookie,
   verifyPhonePasswordResetCode,
 } from "@/lib/auth/passwordReset";
+import { cleanupExpiredAuthRecords } from "@/lib/auth/cleanup";
+import { AUTH_RULES } from "@/customerAccess/config/authRules";
+import {
+  checkRateLimit,
+  getRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/auth/rateLimit";
 
 export async function POST(request) {
   try {
     const { identifier, code, phoneChannel } = await request.json();
+
+    const rateLimit = checkRateLimit({
+      key: getRateLimitKey(request, "password-verify-code", identifier),
+      ...AUTH_RULES.rateLimit.passwordVerifyCode,
+    });
+
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
 
     if (!identifier || !code) {
       return Response.json(

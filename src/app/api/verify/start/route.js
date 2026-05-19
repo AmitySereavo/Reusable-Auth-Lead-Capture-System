@@ -4,6 +4,15 @@ import { AUTH_MESSAGES } from "@/customerAccess/config/authMessages";
 import { parseIdentifier } from "@/customerAccess/utils/identifier";
 import { sendVerificationDelivery } from "@/lib/verification/delivery";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
+import { cleanupExpiredAuthRecords } from "@/lib/auth/cleanup";
+
+import {
+  checkRateLimit,
+  getRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/auth/rateLimit";
+
 
 const RESEND_COOLDOWN_SECONDS =
   AUTH_RULES.verification.resendCooldownSeconds;
@@ -68,6 +77,8 @@ function getSuccessMessage(delivery) {
 
 export async function POST(request) {
   try {
+    await cleanupExpiredAuthRecords();
+    
     const {
       identifier,
       expiresInMinutes,
@@ -79,6 +90,15 @@ export async function POST(request) {
       contextMetadata = null,
       phoneChannel = null,
     } = await request.json();
+
+    const rateLimit = checkRateLimit({
+      key: getRateLimitKey(request, "verification-start", identifier),
+      ...AUTH_RULES.rateLimit.verificationStart,
+    });
+
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
 
     if (!identifier) {
       return Response.json(
@@ -263,6 +283,7 @@ export async function POST(request) {
     }
 
     const code = generateCode();
+    const codeHash = await bcrypt.hash(code, 10);
 
     await prisma.verificationCode.deleteMany({
       where: {
@@ -273,7 +294,7 @@ export async function POST(request) {
     const verificationCode = await prisma.verificationCode.create({
       data: {
         identifier: normalizedIdentifier,
-        code,
+        code: codeHash,
         expiresAt,
       },
     });

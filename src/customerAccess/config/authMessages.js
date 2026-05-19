@@ -5,6 +5,7 @@ export const AUTH_MESSAGES = {
     identifierRequired: "Email or phone number is required.",
     identifierAndPasswordRequired: "Email or phone number and password are required.",
     identifierAndCodeRequired: "Identifier and code are required.",
+    tooManyRequests: "Too many requests. Please try again later.",
   },
 
   signup: {
@@ -36,6 +37,7 @@ export const AUTH_MESSAGES = {
     resendCodeSent: "A new verification code has been sent.",
     autoLinkSent: "A verification link has been sent.",
     resendLinkSent: "A new verification link has been sent.",
+    tooManyAttempts: "Too many incorrect attempts. Please request a new verification code.",
 
     tokenFlow: {
       initialMessage: "Click Verify to confirm your details.",
@@ -57,6 +59,8 @@ export const AUTH_MESSAGES = {
   phoneCodeSentNeutral:
     "If an account matches that phone number, reset instructions have been processed.",
   codeSent: "A password reset code has been sent.",
+  resendCooldown:
+    "Please wait before requesting another password reset.",
   choosePhoneChannel: "Choose whether to receive the reset code by WhatsApp or SMS.",
   invalidCode: "Invalid reset code. Please use the most recent code sent to you.",
   codeExpired: "That reset code has expired. Please request a new one.",

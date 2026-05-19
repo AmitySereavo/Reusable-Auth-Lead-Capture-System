@@ -3,11 +3,27 @@ import { prisma } from "@/lib/prisma";
 import { AUTH_RULES } from "@/customerAccess/config/authRules";
 import { AUTH_MESSAGES } from "@/customerAccess/config/authMessages";
 import { parseIdentifier } from "@/customerAccess/utils/identifier";
+import {
+  checkRateLimit,
+  getRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/auth/rateLimit";
+
 
 export async function POST(request) {
   try {
     const body = await request.json();
     const { identifier, password, fullName, country, city } = body;
+
+      const rateLimit = checkRateLimit({
+      key: getRateLimitKey(request, "signup", identifier),
+      ...AUTH_RULES.rateLimit.signup,
+    });
+
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
+
 
     if (!identifier || !password) {
       return Response.json(

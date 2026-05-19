@@ -2,11 +2,27 @@ import bcrypt from "bcrypt";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth/sessionServer";
 import { AUTH_MESSAGES } from "@/customerAccess/config/authMessages";
+import { AUTH_RULES } from "@/customerAccess/config/authRules";
 import { parseIdentifier } from "@/customerAccess/utils/identifier";
+import {
+  checkRateLimit,
+  getRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/auth/rateLimit";
 
 export async function POST(request) {
   try {
     const { identifier, password } = await request.json();
+
+    const rateLimit = checkRateLimit({
+      key: getRateLimitKey(request, "login", identifier),
+      ...AUTH_RULES.rateLimit.login,
+    });
+
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
+
 
     if (!identifier || !password) {
       return Response.json(

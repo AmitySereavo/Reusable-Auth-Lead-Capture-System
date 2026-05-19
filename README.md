@@ -2,7 +2,7 @@
 
 A reusable authentication and lead capture system built with **Next.js App Router**, **React**, **PostgreSQL**, **Prisma ORM**, **bcrypt**, and **database-backed sessions with HTTP-only cookies**.
 
-This project is designed to be adapted across different websites and businesses by centralizing form structure, validation rules, messages, branding defaults, redirect behavior, verification behavior, delivery behavior, and lead capture logic.
+This project is designed to be adapted across different websites and businesses by centralizing form structure, validation rules, messages, branding defaults, redirect behavior, verification behavior, delivery behavior, rate limits, and lead capture logic.
 
 ---
 
@@ -32,6 +32,9 @@ This project is designed to be adapted across different websites and businesses 
 - Phone channel choice for phone identifiers
 - Reusable verification session context
 - Shared verify page flow
+- Main verification codes are bcrypt-hashed before storage
+- Config-driven maximum verification code attempts
+- Config-driven resend cooldown for verification requests
 
 ### Lead Capture
 
@@ -55,6 +58,19 @@ This project is designed to be adapted across different websites and businesses 
 - Normalized delivery result structure
 - Delivery-attempt audit logging
 
+### Security / Abuse Protection
+
+- bcrypt password hashing
+- bcrypt verification-code hashing
+- Hashed password reset tokens
+- Hashed password reset phone codes
+- Hashed password reset access grants
+- Config-driven verification code attempt limits
+- Config-driven password-reset resend cooldown
+- Opportunistic cleanup of expired auth records
+- In-memory rate limiting helper
+- Rate limiting applied to high-risk auth endpoints
+
 ### Reusability
 
 - Centralized auth rules
@@ -71,7 +87,7 @@ This project is designed to be adapted across different websites and businesses 
 
 ## Stack
 
-- Next.js (App Router)
+- Next.js App Router
 - React
 - PostgreSQL
 - Prisma ORM
@@ -174,7 +190,9 @@ src/
 
   lib/
     auth/
+      cleanup.js
       passwordReset.js
+      rateLimit.js
       sessionCookie.js
       sessionServer.js
       sessionToken.js
@@ -248,9 +266,39 @@ src/
 
 ---
 
+## Verification Design
+
+The main verification flow supports code and link delivery.
+
+### Code path
+
+- a six-digit code is generated
+- the raw code is sent to the user
+- only a bcrypt hash of the code is stored in the database
+- submitted codes are checked with `bcrypt.compare`
+- failed attempts increment the verification record attempt counter
+- attempts are blocked after the configured limit
+
+### Link path
+
+- a raw token is generated
+- only a SHA-256 hash of the token is stored in the database
+- the user receives a verification link
+- link consumption confirms the identifier after user confirmation
+
+### Verification safety behavior
+
+- older verification records for the same identifier are removed when new records are created
+- code and link expiry are enforced
+- code attempt limits are enforced
+- verification request cooldowns are enforced
+- expired records are cleaned opportunistically from auth routes
+
+---
+
 ## Password Reset Design
 
-The reset flow supports two recovery paths:
+The reset flow supports two recovery paths.
 
 ### Email path
 
@@ -272,7 +320,71 @@ The reset flow supports two recovery paths:
 - older unused reset records are invalidated when a new reset starts
 - reset links are single-use
 - reset access grants are single-use
+- password reset resend cooldown is enforced
 - existing sessions are revoked after password change
+
+---
+
+## Rate Limiting
+
+The project includes a reusable in-memory rate limiter in:
+
+```txt
+src/lib/auth/rateLimit.js
+```
+
+Rate limits are configured in:
+
+```txt
+src/customerAccess/config/authRules.js
+```
+
+The limiter currently protects high-risk auth endpoints such as:
+
+```txt
+/api/signup
+/api/login
+/api/verify/start
+/api/verify/check
+/api/password/forgot
+/api/password/verify-code
+/api/password/reset
+```
+
+Current limiter behavior:
+
+- tracks attempts by route scope, client IP, and identifier where available
+- returns `429 Too Many Requests` when the configured limit is exceeded
+- includes `retryAfterSeconds`
+- includes a `Retry-After` response header
+
+Important production note:
+
+The current limiter is in-memory. It is useful for local development and simple deployments, but it will reset when the server restarts and will not synchronize across multiple server instances.
+
+For serious production deployment, replace or extend the same helper with Redis, Upstash, or another shared store.
+
+---
+
+## Auth Cleanup
+
+Expired auth records are cleaned opportunistically by:
+
+```txt
+src/lib/auth/cleanup.js
+```
+
+The helper removes expired:
+
+- verification codes
+- verification tokens
+- password reset tokens
+- password reset challenges
+- password reset access grants
+
+This cleanup helper is called from verification and password reset routes.
+
+A future production deployment can also expose this through a scheduled cron route or platform scheduler.
 
 ---
 
@@ -336,6 +448,30 @@ The project currently includes:
 - `PasswordResetChallenge`
 - `PasswordResetAccessGrant`
 
+### VerificationCode
+
+Used for the normal verification-code flow.
+
+Important fields:
+
+- `identifier`
+- `code`
+- `expiresAt`
+- `attempts`
+- `createdAt`
+
+The `code` field stores a bcrypt hash, not the raw code.
+
+### VerificationToken
+
+Used for the normal verification-link flow.
+
+The token sent to the user is raw, but only the token hash is stored.
+
+### VerificationDeliveryAttempt
+
+Stores delivery attempt audit records for email, SMS, and WhatsApp verification messages.
+
 ### PasswordResetToken
 
 Used for the email reset-link flow.
@@ -359,6 +495,7 @@ Used after successful phone code verification to allow access to the reset-passw
 - Dashboard is server-protected
 - Login page redirects authenticated users away
 - Reset-password page only opens with a valid reset token or reset-access cookie
+- If a user tries to log in before verification, verification context is saved and the user is routed to verification
 
 ---
 
@@ -415,6 +552,12 @@ Start the development server:
 npm run dev
 ```
 
+Build:
+
+```bash
+npm run build
+```
+
 ---
 
 ## Current Testing Checklist
@@ -426,6 +569,8 @@ npm run dev
 3. If phone is entered, confirm WhatsApp/SMS choice appears
 4. Complete verification
 5. Confirm login is possible afterward
+6. Confirm `VerificationCode.code` stores a bcrypt hash, not the raw code
+7. Try several wrong verification codes and confirm attempt limit blocks after the configured amount
 
 ### Login + Session
 
@@ -442,11 +587,12 @@ npm run dev
 1. Go to `/forgot-password`
 2. Enter verified email
 3. Confirm reset link is sent
-4. Open link
-5. Confirm `/reset-password?token=...` opens correctly
-6. Reset password
-7. Confirm old sessions are revoked
-8. Confirm new password works
+4. Immediately request again and confirm cooldown blocks repeat request
+5. Open link
+6. Confirm `/reset-password?token=...` opens correctly
+7. Reset password
+8. Confirm old sessions are revoked
+9. Confirm new password works
 
 ### Forgot Password by Phone
 
@@ -454,10 +600,18 @@ npm run dev
 2. Enter verified phone
 3. Confirm WhatsApp/SMS choice appears
 4. Receive reset code
-5. Enter code at `/forgot-password/code`
-6. Confirm redirect to `/reset-password`
-7. Reset password
-8. Confirm new password works
+5. Immediately request again and confirm cooldown blocks repeat request
+6. Enter code at `/forgot-password/code`
+7. Confirm redirect to `/reset-password`
+8. Reset password
+9. Confirm new password works
+
+### Rate Limiting
+
+1. Repeatedly submit login attempts with bad credentials
+2. Confirm `429 Too Many Requests` appears after the configured limit
+3. Repeat for verification start/check and password reset routes
+4. Confirm `retryAfterSeconds` is included in the response
 
 ### Lead Capture
 
@@ -470,14 +624,42 @@ npm run dev
 
 ## Recommended Next Improvements
 
-- Hash main verification codes instead of storing plaintext
-- Add rate limiting to signup, login, verify, forgot-password, and reset endpoints
-- Add resend cooldown rules for password-reset requests
-- Add cleanup for expired reset records
 - Add webhook signature verification for Twilio status callbacks
 - Continue consolidating remaining hardcoded messages into shared config
 - Add richer audit metadata where useful
 - Add a dedicated auth regression checklist file in the repo
+- Add production-grade Redis/Upstash-backed rate limiting
+- Add scheduled cleanup route or deployment cron for expired auth records
+- Add account profile editing flow
+- Add reusable current-user helper/endpoint for the future reusable-slide-pages merge
+- Add integration notes for merging this project into reusable-slide-pages
+
+---
+
+## Future Merge Direction
+
+This project is intended to be polished as a standalone reusable auth/account tool first, then copied/merged into the reusable-slide-pages project.
+
+The future combined system should support:
+
+- account creation
+- login/logout
+- verified user sessions
+- lead capture
+- protected customer pages
+- order ownership
+- ticket ownership
+- ticket-owner meal access
+- purchase-gated album downloads
+- reusable profile/account pages
+
+Likely merge direction:
+
+- move `customerAccess/` into reusable-slide-pages
+- move auth API routes into reusable-slide-pages
+- merge Prisma models into the reusable-slide-pages schema
+- keep config-driven auth behavior
+- connect slide order/ticket/download records to authenticated users later
 
 ---
 
@@ -485,7 +667,7 @@ npm run dev
 
 This repository is currently focused on:
 
-**A reusable signup, login, logout, verification, password-reset, session, and lead-capture system with config-driven forms and reusable delivery channels.**
+**A reusable signup, login, logout, verification, password-reset, session, rate-limited, and lead-capture system with config-driven forms and reusable delivery channels.**
 
 Practical direction:
 
@@ -496,9 +678,15 @@ Practical direction:
 - protect routes server-side
 - use database-backed sessions
 - keep delivery providers abstracted from route handlers
+- keep security rules and limits in config files
+- prepare the system for a later merge with reusable-slide-pages
 
 ---
 
 ## License
 
 Add your preferred license here.
+
+```
+
+```

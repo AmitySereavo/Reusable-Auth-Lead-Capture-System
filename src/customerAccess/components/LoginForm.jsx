@@ -3,7 +3,7 @@
 import AuthForm from "./AuthForm";
 import { loginConfig } from "../config/loginConfig";
 import { AUTH_MESSAGES } from "../config/authMessages";
-import { setPendingVerificationIdentifier } from "../utils/verificationSession";
+import { setPendingVerificationContext } from "../utils/verificationSession";
 import { siteConfig } from "../config/siteConfig";
 
 export default function LoginForm({
@@ -35,7 +35,11 @@ export default function LoginForm({
     const data = await res.json();
 
     if (data.needsVerification) {
-      setPendingVerificationIdentifier(identifier);
+          setPendingVerificationContext({
+          identifier,
+          target: "account",
+          successRedirect: routes.dashboard || "/dashboard",
+        });
       setMessage("Your account needs verification before login.");
       setMessageType("info");
 

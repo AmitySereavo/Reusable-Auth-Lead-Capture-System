@@ -10,10 +10,25 @@ import {
   getValidPasswordResetToken,
   revokeAllUserSessions,
 } from "@/lib/auth/passwordReset";
+import { cleanupExpiredAuthRecords } from "@/lib/auth/cleanup";
+import {
+  checkRateLimit,
+  getRateLimitKey,
+  rateLimitResponse,
+} from "@/lib/auth/rateLimit";
 
 export async function POST(request) {
   try {
     const { token, password, confirmPassword } = await request.json();
+
+    const rateLimit = checkRateLimit({
+      key: getRateLimitKey(request, "password-reset", token || "reset"),
+      ...AUTH_RULES.rateLimit.passwordReset,
+    });
+
+    if (!rateLimit.ok) {
+      return rateLimitResponse(rateLimit);
+    }
 
     if (!password || !confirmPassword) {
       return Response.json(
