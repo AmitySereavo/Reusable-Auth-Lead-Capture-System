@@ -30,6 +30,8 @@ export async function POST(request) {
   try {
     await cleanupExpiredAuthRecords();
 
+    const { identifier, phoneChannel } = await request.json();
+
     const rateLimit = checkRateLimit({
       key: getRateLimitKey(request, "password-forgot", identifier),
       ...AUTH_RULES.rateLimit.passwordForgot,
@@ -38,9 +40,7 @@ export async function POST(request) {
     if (!rateLimit.ok) {
       return rateLimitResponse(rateLimit);
     }
-
-    const { identifier, phoneChannel } = await request.json();
-
+    
     if (!identifier) {
       return Response.json(
         { error: AUTH_MESSAGES.common.identifierRequired },

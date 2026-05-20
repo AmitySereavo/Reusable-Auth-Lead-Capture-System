@@ -1,8 +1,3 @@
-`AUTH_REGRESSION_CHECKLIST.md`
-
-Replace the full file with this updated checklist:
-
-````md
 # Auth Regression Checklist
 
 Use this checklist after every auth/security/delivery change and before committing.
@@ -741,4 +736,3 @@ Before commit:
 - [ ] Commit with clear message
 - [ ] Push to GitHub
 - [ ] Share new SHA as source of truth
-````

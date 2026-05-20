@@ -24,7 +24,6 @@ export async function POST(request) {
       return rateLimitResponse(rateLimit);
     }
 
-
     if (!identifier || !password) {
       return Response.json(
         { error: AUTH_MESSAGES.common.identifierAndPasswordRequired },
