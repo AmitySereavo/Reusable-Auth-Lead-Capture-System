@@ -17,7 +17,8 @@ import {
 const RESEND_COOLDOWN_SECONDS =
   AUTH_RULES.verification.resendCooldownSeconds;
 
-const ALLOWED_PHONE_CHANNELS = ["sms", "whatsapp"];
+const ALLOWED_PHONE_CHANNELS =
+  AUTH_RULES?.verification?.enabledPhoneChannels || ["whatsapp"];
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();

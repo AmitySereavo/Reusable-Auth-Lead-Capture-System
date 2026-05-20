@@ -3,16 +3,26 @@ export const AUTH_RULES = {
     minLength: 10,
     maxLength: 20,
   },
-  password: {
+    password: {
     minLength: 8,
     signupMinLength: 8,
     signupMaxLength: 128,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumber: true,
+    requireSpecialCharacter: true,
+    specialCharacterPattern: "[^A-Za-z0-9]",
+    strength: {
+      mediumScore: 3,
+      strongScore: 5,
+    },
   },
   verification: {
     codeLength: 6,
     resendCooldownSeconds: 60,
     defaultExpiryMinutes: 10,
     maxCodeAttempts: 5,
+    enabledPhoneChannels: ["whatsapp"],
   },
   passwordReset: {
     resendCooldownSeconds: 60,

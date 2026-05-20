@@ -6,7 +6,7 @@ import { fieldRegistry } from "../config/fieldRegistry";
 import { validateFormFields } from "../utils/validation";
 import "../styles/auth.css";
 import { siteConfig } from "../config/siteConfig";
-
+import { getPasswordStrength } from "../utils/passwordPolicy";
 import { AUTH_MESSAGES } from "../config/authMessages";
 import { setPendingVerificationContext } from "../utils/verificationSession";
 import { parseIdentifier } from "../utils/identifier";
@@ -62,6 +62,15 @@ export default function AuthForm({
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("error");
   const [loading, setLoading] = useState(false);
+
+  const [visiblePasswordFields, setVisiblePasswordFields] = useState({});
+
+  function togglePasswordVisibility(fieldKey) {
+    setVisiblePasswordFields((prev) => ({
+      ...prev,
+      [fieldKey]: !prev[fieldKey],
+    }));
+  }
 
   const verificationConfig = config.verification || {};
   const phoneChannelEnabled = !!verificationConfig.promptForPhoneChannel;
@@ -284,6 +293,98 @@ export default function AuthForm({
     return <span className="auth-help-text">{helpText}</span>;
   }
 
+  function renderPasswordStrength(fieldKey) {
+    if (fieldKey !== "password") {
+      return null;
+    }
+
+    const strength = getPasswordStrength(formData.password || "");
+
+    if (!strength.label) {
+      return null;
+    }
+
+    return (
+      <div className={`auth-password-strength auth-password-strength-${strength.level}`}>
+        <div className="auth-password-strength-label">{strength.label}</div>
+        <ul className="auth-password-requirements">
+          {strength.requirements.map((rule) => (
+            <li
+              key={rule.key}
+              className={
+                rule.met
+                  ? "auth-password-requirement-met"
+                  : "auth-password-requirement-unmet"
+              }
+            >
+              {rule.met ? "✓" : "•"} {rule.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  function renderPasswordInput({ key, placeholder, settings, meta }) {
+    const isVisible = visiblePasswordFields[key] === true;
+    const isConfirmPassword = key === "confirmPassword";
+    const confirmPasswordValue = String(formData.confirmPassword || "");
+    const passwordValue = String(formData.password || "");
+    const hasConfirmPasswordValue =
+      isConfirmPassword && confirmPasswordValue.length > 0;
+    const confirmPasswordMatches =
+      hasConfirmPasswordValue && confirmPasswordValue === passwordValue;
+
+    return (
+      <label key={key}>
+        {settings?.label || meta.label}
+        <div className="auth-password-input-wrap">
+          <input
+            type={isVisible ? "text" : "password"}
+            placeholder={placeholder}
+            value={formData[key] || ""}
+            onChange={(e) => updateField(key, e.target.value)}
+            onPaste={key === "confirmPassword" ? (e) => e.preventDefault() : undefined}
+            onDrop={key === "confirmPassword" ? (e) => e.preventDefault() : undefined}
+            autoComplete={key === "confirmPassword" ? "new-password" : "new-password"}
+            required={!!settings.required}
+          />
+          <button
+            type="button"
+            className="auth-password-toggle"
+            onClick={() => togglePasswordVisibility(key)}
+            aria-label={isVisible ? "Hide password" : "Show password"}
+          >
+            {isVisible ? "Hide" : "Show"}
+          </button>
+        </div>
+        {renderPasswordStrength(key)}
+
+        {isConfirmPassword ? (
+          <span className="auth-help-text">
+            Please type the password again instead of pasting.
+          </span>
+        ) : null}
+
+        {hasConfirmPasswordValue ? (
+          <span
+            className={
+              confirmPasswordMatches
+                ? "auth-password-match auth-password-match-success"
+                : "auth-password-match auth-password-match-error"
+            }
+          >
+            {confirmPasswordMatches
+              ? "✓ Passwords match."
+              : "Passwords do not match yet."}
+          </span>
+        ) : null}
+
+        {renderHelpText(settings, meta)}
+      </label>
+    );
+  }
+
   function renderField(field) {
     const { key, settings, meta } = field;
 
@@ -306,23 +407,60 @@ export default function AuthForm({
     }
 
     if (meta.type === "radio") {
+      const configuredOptions = Array.isArray(settings?.options)
+        ? settings.options
+        : Array.isArray(verificationConfig?.phoneChannelOptions) &&
+            key === "phoneVerificationChannel"
+          ? verificationConfig.phoneChannelOptions
+          : meta.options || [];
+
       return (
         <fieldset key={key} className="auth-radio-group">
           <legend>{label}</legend>
           <div className="auth-radio-options">
-            {meta.options?.map((option) => (
-              <label key={option.value} className="auth-radio-option">
-                <input
-                  type="radio"
-                  name={key}
-                  value={option.value}
-                  checked={formData[key] === option.value}
-                  onChange={(e) => updateField(key, e.target.value)}
-                  required={!!settings.required}
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
+            {configuredOptions.map((option) => {
+              const normalizedOption =
+                typeof option === "string"
+                  ? {
+                      value: option,
+                      label:
+                        option === "sms"
+                          ? "SMS"
+                          : option === "whatsapp"
+                            ? "WhatsApp"
+                            : option,
+                    }
+                  : option;
+
+              return (
+                <label
+                  key={normalizedOption.value}
+                  className={`auth-radio-option ${
+                    normalizedOption.disabled ? "auth-radio-option-disabled" : ""
+                  }`}
+                  title={normalizedOption.disabledReason || undefined}
+                >
+                  <input
+                    type="radio"
+                    name={key}
+                    value={normalizedOption.value}
+                    checked={formData[key] === normalizedOption.value}
+                    onChange={(e) => updateField(key, e.target.value)}
+                    required={!!settings.required}
+                    disabled={!!normalizedOption.disabled}
+                  />
+                  <span>
+                    {normalizedOption.label}
+                    {normalizedOption.disabled &&
+                    normalizedOption.disabledReason ? (
+                      <small className="auth-option-disabled-note">
+                        {normalizedOption.disabledReason}
+                      </small>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
           </div>
           {renderHelpText(settings, meta)}
         </fieldset>
@@ -363,6 +501,15 @@ export default function AuthForm({
           {renderHelpText(settings, meta)}
         </label>
       );
+    }
+
+    if (meta.type === "password") {
+      return renderPasswordInput({
+        key,
+        placeholder,
+        settings,
+        meta,
+      });
     }
 
     return (
@@ -412,7 +559,11 @@ export default function AuthForm({
           fieldRegistry.phoneVerificationChannel &&
           renderField({
             key: "phoneVerificationChannel",
-            settings: { visible: true, required: true },
+            settings: {
+              visible: true,
+              required: true,
+              options: verificationConfig.phoneChannelOptions,
+            },
             meta: fieldRegistry.phoneVerificationChannel,
           })}
 

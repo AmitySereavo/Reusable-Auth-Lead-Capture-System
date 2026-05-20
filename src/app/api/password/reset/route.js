@@ -10,6 +10,7 @@ import {
   getValidPasswordResetToken,
   revokeAllUserSessions,
 } from "@/lib/auth/passwordReset";
+import { validatePasswordPolicy } from "@/customerAccess/utils/passwordPolicy";
 import { cleanupExpiredAuthRecords } from "@/lib/auth/cleanup";
 import {
   checkRateLimit,
@@ -19,6 +20,8 @@ import {
 
 export async function POST(request) {
   try {
+    await cleanupExpiredAuthRecords();
+
     const { token, password, confirmPassword } = await request.json();
 
     const rateLimit = checkRateLimit({
@@ -44,12 +47,11 @@ export async function POST(request) {
       );
     }
 
-    if (
-      password.length < AUTH_RULES.password.signupMinLength ||
-      password.length > AUTH_RULES.password.signupMaxLength
-    ) {
+    const passwordPolicyError = validatePasswordPolicy(password);
+
+    if (passwordPolicyError) {
       return Response.json(
-        { error: AUTH_MESSAGES.signup.weakPassword },
+        { error: passwordPolicyError },
         { status: 400 }
       );
     }

@@ -1,8 +1,10 @@
 # Reusable Auth + Lead Capture System
 
-A reusable authentication and lead capture system built with **Next.js App Router**, **React**, **PostgreSQL**, **Prisma ORM**, **bcrypt**, and **database-backed sessions with HTTP-only cookies**.
+A reusable authentication, account access, verification, password reset, delivery, and lead capture system built with **Next.js App Router**, **React**, **PostgreSQL**, **Prisma ORM**, **bcrypt**, **Nodemailer SMTP**, and **database-backed sessions with HTTP-only cookies**.
 
-This project is designed to be adapted across different websites and businesses by centralizing form structure, validation rules, messages, branding defaults, redirect behavior, verification behavior, delivery behavior, rate limits, and lead capture logic.
+This project is designed to be adapted across different websites and businesses by centralizing form structure, validation rules, password policy, messages, branding defaults, redirect behavior, verification behavior, delivery behavior, rate limits, and lead capture logic.
+
+The current goal is to polish this system as a standalone reusable auth/account tool first, then copy/merge it into the reusable-slide-pages project later.
 
 ---
 
@@ -19,7 +21,6 @@ This project is designed to be adapted across different websites and businesses 
 - Forgot password
 - Password reset by email link
 - Password reset by phone code
-- Password reset by WhatsApp or SMS when phone is used
 - Password reset access grant before final password change
 - Existing sessions revoked after successful password reset
 
@@ -35,6 +36,7 @@ This project is designed to be adapted across different websites and businesses 
 - Main verification codes are bcrypt-hashed before storage
 - Config-driven maximum verification code attempts
 - Config-driven resend cooldown for verification requests
+- Existing unverified users can re-enter signup and continue verification instead of being blocked by “user already exists”
 
 ### Lead Capture
 
@@ -50,13 +52,48 @@ This project is designed to be adapted across different websites and businesses 
 - Email delivery abstraction
 - SMS delivery abstraction
 - WhatsApp delivery abstraction
-- Resend integration for email
-- Twilio support for SMS
-- Meta WhatsApp support
 - Console providers for local/dev testing
-- Dev-safe Resend test routing
+- Resend email provider
+- Nodemailer SMTP email provider
+- Meta WhatsApp Cloud API provider
+- Twilio SMS support exists but SMS is currently paused/optional
+- Dev-safe email inbox rewriting
 - Normalized delivery result structure
 - Delivery-attempt audit logging
+
+### Email
+
+Email currently supports:
+
+- Console email for local testing
+- Resend email provider
+- SMTP email provider through Nodemailer
+- Gmail SMTP testing through Google App Passwords
+- Dev-safe test inbox rewriting through `EMAIL_DEV_TEST_INBOX`
+
+Current preferred direction:
+
+```txt
+Primary email provider for self-managed sending:
+Nodemailer SMTP
+```
+
+### WhatsApp
+
+WhatsApp currently supports:
+
+- Console simulation mode
+- Meta WhatsApp Cloud API mode
+- Text-message mode
+- Template-message mode foundation
+- Delivery attempt logging with Meta `wamid` provider message IDs
+
+Current WhatsApp status:
+
+- WhatsApp API sending has been connected and accepted by Meta in testing
+- Business verification is pending before production template use
+- Authentication templates are planned for production verification-code messages
+- SMS is paused until a later date
 
 ### Security / Abuse Protection
 
@@ -70,6 +107,19 @@ This project is designed to be adapted across different websites and businesses 
 - Opportunistic cleanup of expired auth records
 - In-memory rate limiting helper
 - Rate limiting applied to high-risk auth endpoints
+- Password policy enforced client-side and server-side
+
+### Password UX
+
+- Show/hide password toggle on signup password fields
+- Show/hide password toggle on reset-password fields
+- Live password strength indicator while typing
+- Weak / medium / strong password signal
+- Config-driven password requirements
+- Confirm password paste blocked
+- Confirm password drag/drop blocked
+- Confirm password note: user must type password again instead of pasting
+- Live “passwords match / do not match” signal while typing confirm password
 
 ### Reusability
 
@@ -82,6 +132,8 @@ This project is designed to be adapted across different websites and businesses 
 - Shared route defaults
 - Shared reusable identifier parsing
 - Shared reusable phone-channel detection UI
+- Extractable delivery provider structure
+- Future-ready for copy/merge into reusable-slide-pages
 
 ---
 
@@ -92,9 +144,10 @@ This project is designed to be adapted across different websites and businesses 
 - PostgreSQL
 - Prisma ORM
 - bcrypt
+- Nodemailer
 - Resend
-- Twilio
 - Meta WhatsApp Business / Cloud API
+- Twilio support exists but SMS is paused/optional
 
 ---
 
@@ -183,6 +236,7 @@ src/
     utils/
       hashPassword.js
       identifier.js
+      passwordPolicy.js
       passwordResetSession.js
       validation.js
       verificationSession.js
@@ -203,6 +257,7 @@ src/
       providers/
         emailConsole.js
         emailResend.js
+        emailSmtp.js
         smsConsole.js
         smsTwilio.js
         whatsappMeta.js
@@ -218,10 +273,28 @@ src/
 1. User submits signup form
 2. Identifier can be email or phone
 3. If identifier is a phone number, WhatsApp/SMS choice can appear automatically
-4. Account is created
-5. Verification starts
-6. User completes verification
-7. User continues through configured redirect flow
+4. SMS can be visible but disabled if the business has SMS turned off
+5. Account is created
+6. Verification starts
+7. User completes verification
+8. User continues through configured redirect flow
+
+If a user already exists but the submitted channel is not verified:
+
+```txt
+/signup
+→ API returns success-style response
+→ frontend starts verification again
+→ user receives a fresh code/link
+→ user is routed to /verify
+```
+
+If a user already exists and the submitted channel is already verified:
+
+```txt
+/signup
+→ user receives “User already exists”
+```
 
 ## Login Flow
 
@@ -231,6 +304,15 @@ src/
 4. Session is created
 5. Session token is stored in an HTTP-only cookie
 6. User is redirected to `/dashboard`
+
+If the account is not verified:
+
+```txt
+/login
+→ login blocked
+→ pending verification context saved
+→ user routed to /verify
+```
 
 ## Logout Flow
 
@@ -247,22 +329,24 @@ src/
 3. If the email matches a verified account, a password reset link is sent
 4. User opens `/reset-password?token=...`
 5. User enters a new password
-6. Password is updated
-7. Existing sessions are revoked
-8. User returns to login
+6. Password policy is validated
+7. Password is updated
+8. Existing sessions are revoked
+9. User returns to login
 
 ## Forgot Password by Phone
 
 1. User opens `/forgot-password`
 2. User enters phone number
-3. WhatsApp/SMS choice appears
-4. A password reset code is sent
+3. WhatsApp/SMS choice appears depending on config
+4. A password reset code is sent through the selected enabled channel
 5. User enters the code at `/forgot-password/code`
 6. Server creates a short-lived reset access grant
 7. User is redirected to `/reset-password`
 8. User enters a new password
-9. Password is updated
-10. Existing sessions are revoked
+9. Password policy is validated
+10. Password is updated
+11. Existing sessions are revoked
 
 ---
 
@@ -296,6 +380,70 @@ The main verification flow supports code and link delivery.
 
 ---
 
+## Password Policy
+
+Password rules live in:
+
+```txt
+src/customerAccess/config/authRules.js
+```
+
+Example:
+
+```js
+password: {
+  minLength: 8,
+  signupMinLength: 8,
+  signupMaxLength: 128,
+  requireUppercase: true,
+  requireLowercase: true,
+  requireNumber: true,
+  requireSpecialCharacter: true,
+  specialCharacterPattern: "[^A-Za-z0-9]",
+  strength: {
+    mediumScore: 3,
+    strongScore: 5,
+  },
+}
+```
+
+Reusable helper:
+
+```txt
+src/customerAccess/utils/passwordPolicy.js
+```
+
+Current password behavior:
+
+- signup validates password policy client-side
+- signup validates password policy server-side
+- password reset validates password policy server-side
+- password field shows live strength
+- password field shows requirement checklist
+- confirm password blocks paste/drop
+- confirm password gives live match/mismatch feedback
+
+Password strength labels:
+
+```txt
+Weak password
+Medium password
+Strong password
+```
+
+Password requirement examples:
+
+```txt
+At least 8 characters
+No more than 128 characters
+At least one uppercase letter
+At least one lowercase letter
+At least one number
+At least one special character
+```
+
+---
+
 ## Password Reset Design
 
 The reset flow supports two recovery paths.
@@ -311,7 +459,7 @@ The reset flow supports two recovery paths.
 
 - password reset challenge is created
 - code is hashed before storage
-- user receives a code by WhatsApp or SMS
+- user receives a code by enabled phone channel
 - after successful code verification, a short-lived reset access grant is issued
 - grant allows access to the reset-password page
 
@@ -322,6 +470,231 @@ The reset flow supports two recovery paths.
 - reset access grants are single-use
 - password reset resend cooldown is enforced
 - existing sessions are revoked after password change
+
+---
+
+## Delivery Provider System
+
+Delivery config lives in:
+
+```txt
+src/customerAccess/config/verificationProviders.js
+```
+
+Main delivery router:
+
+```txt
+src/lib/verification/delivery.js
+```
+
+Provider files:
+
+```txt
+src/lib/verification/providers/emailConsole.js
+src/lib/verification/providers/emailResend.js
+src/lib/verification/providers/emailSmtp.js
+src/lib/verification/providers/smsConsole.js
+src/lib/verification/providers/smsTwilio.js
+src/lib/verification/providers/whatsappMeta.js
+```
+
+Delivery attempt logging:
+
+```txt
+src/lib/verification/audit.js
+```
+
+Delivery result normalization:
+
+```txt
+src/lib/verification/result.js
+```
+
+---
+
+## Email Provider Setup
+
+### Console email
+
+Used for local testing without real delivery.
+
+```env
+EMAIL_PROVIDER_MODE="console"
+```
+
+### SMTP email with Nodemailer
+
+Preferred self-managed email sending option.
+
+```env
+EMAIL_PROVIDER_MODE="smtp"
+
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+
+SMTP_USER="your-sender-email@gmail.com"
+SMTP_PASS="your-google-app-password"
+
+SMTP_FROM_EMAIL="Amity Sereavo <your-sender-email@gmail.com>"
+EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
+```
+
+For Gmail SMTP:
+
+- `SMTP_HOST` must be `smtp.gmail.com`
+- use a Google App Password
+- do not use the normal Gmail login password
+- the App Password must be created from the same Google account used in `SMTP_USER`
+- `SMTP_FROM_EMAIL` should match the sender account
+
+In development mode, email can be rewritten to:
+
+```txt
+EMAIL_DEV_TEST_INBOX
+```
+
+This means a signup email entered by a user can be safely sent to your test inbox instead of the real user during testing.
+
+### Resend email
+
+Resend remains supported.
+
+```env
+EMAIL_PROVIDER_MODE="resend"
+
+RESEND_API_KEY="re_xxxxxxxxx"
+RESEND_FROM_EMAIL="Your App <onboarding@resend.dev>"
+RESEND_DEV_TEST_EMAIL="delivered@resend.dev"
+```
+
+---
+
+## WhatsApp Provider Setup
+
+WhatsApp config lives in:
+
+```txt
+src/customerAccess/config/verificationProviders.js
+```
+
+Provider:
+
+```txt
+src/lib/verification/providers/whatsappMeta.js
+```
+
+Current `.env` shape:
+
+```env
+WHATSAPP_ACCESS_TOKEN="EAAG..."
+WHATSAPP_PHONE_NUMBER_ID="123456789012345"
+WHATSAPP_BUSINESS_ACCOUNT_ID="987654321098765"
+WHATSAPP_FROM=""
+
+WHATSAPP_MESSAGE_MODE="text"
+WHATSAPP_AUTH_TEMPLATE_NAME=""
+WHATSAPP_TEMPLATE_LANGUAGE="en_US"
+```
+
+### WhatsApp text mode
+
+```env
+WHATSAPP_MESSAGE_MODE="text"
+```
+
+Text mode can be used for early testing, but it may not reliably deliver verification codes to users who have not messaged the business or who are outside an active WhatsApp customer-service window.
+
+### WhatsApp template mode
+
+```env
+WHATSAPP_MESSAGE_MODE="template"
+WHATSAPP_AUTH_TEMPLATE_NAME="amity_verification_code"
+WHATSAPP_TEMPLATE_LANGUAGE="en_US"
+```
+
+Template mode is the preferred production direction for verification codes.
+
+For production, create an approved WhatsApp Authentication template in Meta.
+
+Example template:
+
+```txt
+Template name:
+amity_verification_code
+
+Category:
+Authentication
+
+Template body:
+Your Amity Sereavo verification code is {{1}}.
+```
+
+The app passes the generated verification code into `{{1}}`.
+
+### Business verification status
+
+Current direction:
+
+- WhatsApp API credentials can be tested
+- Meta business verification may be required before template creation and production messaging
+- Template setup will be completed after Meta approves the business account
+- Email is the primary production-ready channel until WhatsApp template sending is fully approved and tested
+
+---
+
+## SMS / Twilio Status
+
+SMS/Twilio support exists but is currently paused.
+
+Current intended behavior:
+
+- WhatsApp is the preferred phone verification channel
+- SMS can remain visible but disabled in the UI
+- SMS should not be required for any happy path
+- SMS can be re-enabled later through config
+
+Phone channel options are configured from the signup/form config.
+
+Example disabled SMS option:
+
+```js
+phoneChannelOptions: [
+  {
+    value: "whatsapp",
+    label: "WhatsApp",
+    disabled: false,
+  },
+  {
+    value: "sms",
+    label: "SMS",
+    disabled: true,
+    disabledReason: "SMS verification is not available yet.",
+  },
+];
+```
+
+Server-side enabled phone channels are controlled in:
+
+```txt
+src/customerAccess/config/authRules.js
+```
+
+Example:
+
+```js
+verification: {
+  enabledPhoneChannels: ["whatsapp"],
+}
+```
+
+To enable SMS later:
+
+```js
+verification: {
+  enabledPhoneChannels: ["whatsapp", "sms"],
+}
+```
 
 ---
 
@@ -432,6 +805,8 @@ A future production deployment can also expose this through a scheduled cron rou
 
 - `POST /api/webhooks/twilio/status`
 
+Twilio webhook support exists but is not a priority while SMS is paused.
+
 ---
 
 ## Database Models
@@ -472,6 +847,20 @@ The token sent to the user is raw, but only the token hash is stored.
 
 Stores delivery attempt audit records for email, SMS, and WhatsApp verification messages.
 
+Useful fields include:
+
+- channel
+- provider
+- mode
+- status
+- provider message id
+- recipient
+- original recipient
+- rewritten status
+- metadata
+- error code
+- error message
+
 ### PasswordResetToken
 
 Used for the email reset-link flow.
@@ -490,12 +879,18 @@ Used after successful phone code verification to allow access to the reset-passw
 
 - Identifier fields can accept email or phone depending on flow
 - If a phone number is detected in eligible forms, WhatsApp/SMS selection can appear automatically
+- SMS can be shown but disabled if unavailable
 - Phone-capable forms can show helper text reminding users to include country code and area code
 - Login includes a forgot-password path
 - Dashboard is server-protected
 - Login page redirects authenticated users away
 - Reset-password page only opens with a valid reset token or reset-access cookie
 - If a user tries to log in before verification, verification context is saved and the user is routed to verification
+- Signup with an existing unverified account continues the verification flow
+- Password fields support show/hide
+- Password fields show live strength
+- Confirm password blocks paste/drop
+- Confirm password gives live match/mismatch feedback
 
 ---
 
@@ -508,20 +903,33 @@ DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/YOUR_DB_NAME"
 NODE_ENV="development"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
-RESEND_API_KEY="re_xxxxxxxxx"
-RESEND_FROM_EMAIL="Your App <onboarding@resend.dev>"
-RESEND_DEV_TEST_EMAIL="delivered@resend.dev"
+EMAIL_PROVIDER_MODE="smtp"
 
-TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_AUTH_TOKEN="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_SMS_FROM="+1XXXXXXXXXX"
-TWILIO_MESSAGING_SERVICE_SID=""
-TWILIO_STATUS_CALLBACK_URL=""
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER="your-sender-email@gmail.com"
+SMTP_PASS="your-google-app-password"
+SMTP_FROM_EMAIL="Amity Sereavo <your-sender-email@gmail.com>"
+EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
+
+RESEND_API_KEY=""
+RESEND_FROM_EMAIL=""
+RESEND_DEV_TEST_EMAIL="delivered@resend.dev"
 
 WHATSAPP_ACCESS_TOKEN=""
 WHATSAPP_PHONE_NUMBER_ID=""
 WHATSAPP_BUSINESS_ACCOUNT_ID=""
 WHATSAPP_FROM=""
+WHATSAPP_MESSAGE_MODE="text"
+WHATSAPP_AUTH_TEMPLATE_NAME=""
+WHATSAPP_TEMPLATE_LANGUAGE="en_US"
+
+TWILIO_ACCOUNT_SID=""
+TWILIO_AUTH_TOKEN=""
+TWILIO_SMS_FROM=""
+TWILIO_MESSAGING_SERVICE_SID=""
+TWILIO_STATUS_CALLBACK_URL=""
 ```
 
 ---
@@ -560,79 +968,50 @@ npm run build
 
 ---
 
-## Current Testing Checklist
+## Current Testing Checklist Summary
 
-### Signup + Verification
+Detailed checklist lives in:
 
-1. Go to `/signup`
-2. Enter email or phone
-3. If phone is entered, confirm WhatsApp/SMS choice appears
-4. Complete verification
-5. Confirm login is possible afterward
-6. Confirm `VerificationCode.code` stores a bcrypt hash, not the raw code
-7. Try several wrong verification codes and confirm attempt limit blocks after the configured amount
+```txt
+AUTH_REGRESSION_CHECKLIST.md
+```
 
-### Login + Session
+Core checks:
 
-1. Go to `/login`
-2. Log in with verified credentials
-3. Confirm redirect to `/dashboard`
-4. Confirm `/api/session` shows authenticated state
-5. Log out
-6. Confirm `/dashboard` no longer renders
-7. Confirm `/login` redirects authenticated users away when already logged in
-
-### Forgot Password by Email
-
-1. Go to `/forgot-password`
-2. Enter verified email
-3. Confirm reset link is sent
-4. Immediately request again and confirm cooldown blocks repeat request
-5. Open link
-6. Confirm `/reset-password?token=...` opens correctly
-7. Reset password
-8. Confirm old sessions are revoked
-9. Confirm new password works
-
-### Forgot Password by Phone
-
-1. Go to `/forgot-password`
-2. Enter verified phone
-3. Confirm WhatsApp/SMS choice appears
-4. Receive reset code
-5. Immediately request again and confirm cooldown blocks repeat request
-6. Enter code at `/forgot-password/code`
-7. Confirm redirect to `/reset-password`
-8. Reset password
-9. Confirm new password works
-
-### Rate Limiting
-
-1. Repeatedly submit login attempts with bad credentials
-2. Confirm `429 Too Many Requests` appears after the configured limit
-3. Repeat for verification start/check and password reset routes
-4. Confirm `retryAfterSeconds` is included in the response
-
-### Lead Capture
-
-1. Go to `/example/lead-capture`
-2. Submit data with email or phone
-3. Complete verification flow
-4. Confirm redirect behavior matches config
+- build passes
+- signup works
+- email verification works
+- SMTP sends successfully
+- dev-safe email inbox rewrite works
+- existing unverified user can continue verification
+- login works
+- unverified login routes to verification
+- logout revokes session
+- forgot-password email works
+- password reset works
+- password policy blocks weak passwords
+- show/hide password works
+- confirm password paste is blocked
+- confirm password match/mismatch signal works
+- rate limiting works
+- expired auth cleanup works
+- lead capture works
 
 ---
 
 ## Recommended Next Improvements
 
-- Add webhook signature verification for Twilio status callbacks
-- Continue consolidating remaining hardcoded messages into shared config
-- Add richer audit metadata where useful
-- Add a dedicated auth regression checklist file in the repo
+- Update `AUTH_REGRESSION_CHECKLIST.md` for the new SMTP, WhatsApp, SMS-paused, and password-policy behavior
+- Add production setup checklist for WhatsApp template expiry matching app expiry
+- Add production setup checklist for verification resend cooldown and rate limits per business
 - Add production-grade Redis/Upstash-backed rate limiting
 - Add scheduled cleanup route or deployment cron for expired auth records
 - Add account profile editing flow
 - Add reusable current-user helper/endpoint for the future reusable-slide-pages merge
 - Add integration notes for merging this project into reusable-slide-pages
+- Add WhatsApp webhook status route later, after WhatsApp production setup is active
+- Add WhatsApp authentication template mode production test after Meta business verification is complete
+- Decide whether Twilio SMS remains paused, hidden, or enabled per business
 
 ---
 
@@ -652,6 +1031,8 @@ The future combined system should support:
 - ticket-owner meal access
 - purchase-gated album downloads
 - reusable profile/account pages
+- SMTP email notifications
+- WhatsApp ticket/meal notifications after WhatsApp production approval
 
 Likely merge direction:
 
@@ -660,6 +1041,8 @@ Likely merge direction:
 - merge Prisma models into the reusable-slide-pages schema
 - keep config-driven auth behavior
 - connect slide order/ticket/download records to authenticated users later
+- use email first for reusable-slide-pages invitation/account flows
+- add WhatsApp later after business verification and template approval
 
 ---
 
@@ -667,14 +1050,16 @@ Likely merge direction:
 
 This repository is currently focused on:
 
-**A reusable signup, login, logout, verification, password-reset, session, rate-limited, and lead-capture system with config-driven forms and reusable delivery channels.**
+**A reusable signup, login, logout, verification, password-reset, session, rate-limited, SMTP-capable, WhatsApp-ready, and lead-capture system with config-driven forms and reusable delivery channels.**
 
 Practical direction:
 
 - keep the auth system reusable and config-driven
 - support both email and phone-first user journeys
-- support WhatsApp and SMS where phone is used
-- keep email highly reliable
+- use email as the main production-ready communication channel right now
+- keep WhatsApp connected but wait for business verification before production template sending
+- keep SMS/Twilio paused until needed
+- keep password rules configurable by business/app
 - protect routes server-side
 - use database-backed sessions
 - keep delivery providers abstracted from route handlers

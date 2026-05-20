@@ -46,7 +46,19 @@ export const accountSignupConfig = {
     expiresInHours: 24,
     promptForPhoneChannel: true,
     defaultPhoneChannel: "whatsapp",
-    phoneChannelOptions: ["whatsapp", "sms"],
+        phoneChannelOptions: [
+      {
+        value: "whatsapp",
+        label: "WhatsApp",
+        disabled: false,
+      },
+      {
+        value: "sms",
+        label: "SMS",
+        disabled: true,
+        disabledReason: "SMS verification is not available.",
+      },
+    ],
     phoneChannelLabel: "Send verification by",
   },
 

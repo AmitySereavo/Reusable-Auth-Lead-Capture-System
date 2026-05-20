@@ -36,9 +36,12 @@ export const verificationProviders = {
 
   whatsapp: {
     mode: process.env.WHATSAPP_ACCESS_TOKEN ? "meta" : "console",
+    messageMode: process.env.WHATSAPP_MESSAGE_MODE || "text",
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
     from: process.env.WHATSAPP_FROM || null,
+    templateName: process.env.WHATSAPP_AUTH_TEMPLATE_NAME || "",
+    templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US",
   },
 };

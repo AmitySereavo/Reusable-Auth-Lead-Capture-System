@@ -26,7 +26,7 @@ function getGraphApiUrl(phoneNumberId) {
   return `https://graph.facebook.com/v23.0/${phoneNumberId}/messages`;
 }
 
-function buildWhatsAppPayload({ to, text }) {
+function buildWhatsAppTextPayload({ to, text }) {
   return {
     messaging_product: "whatsapp",
     recipient_type: "individual",
@@ -39,11 +39,104 @@ function buildWhatsAppPayload({ to, text }) {
   };
 }
 
+function buildTemplateBodyParameters({ code, verifyUrl, text }) {
+  if (code) {
+    return [
+      {
+        type: "text",
+        text: String(code),
+      },
+    ];
+  }
+
+  if (verifyUrl) {
+    return [
+      {
+        type: "text",
+        text: String(verifyUrl),
+      },
+    ];
+  }
+
+  return [
+    {
+      type: "text",
+      text: String(text || ""),
+    },
+  ];
+}
+
+function buildWhatsAppTemplatePayload({
+  to,
+  templateName,
+  templateLanguage,
+  code,
+  verifyUrl,
+  text,
+}) {
+  if (!templateName) {
+    throw new Error("Missing WHATSAPP_AUTH_TEMPLATE_NAME.");
+  }
+
+  const bodyParameters = buildTemplateBodyParameters({
+    code,
+    verifyUrl,
+    text,
+  });
+
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: {
+        code: templateLanguage || "en_US",
+      },
+      components: [
+        {
+          type: "body",
+          parameters: bodyParameters,
+        },
+      ],
+    },
+  };
+}
+
+function buildWhatsAppPayload({
+  to,
+  text,
+  code,
+  verifyUrl,
+  messageMode,
+  templateName,
+  templateLanguage,
+}) {
+  if (messageMode === "template") {
+    return buildWhatsAppTemplatePayload({
+      to,
+      templateName,
+      templateLanguage,
+      code,
+      verifyUrl,
+      text,
+    });
+  }
+
+  return buildWhatsAppTextPayload({ to, text });
+}
+
 export async function sendWhatsAppVerificationWithMeta({
   to,
   originalTo = to,
   rewritten = false,
   text,
+  code = null,
+  verifyUrl = null,
+  messageMode = "text",
+  templateName = "",
+  templateLanguage = "en_US",
 }) {
   try {
     const { accessToken, phoneNumberId } = getWhatsAppConfig();
@@ -54,7 +147,17 @@ export async function sendWhatsAppVerificationWithMeta({
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(buildWhatsAppPayload({ to, text })),
+      body: JSON.stringify(
+        buildWhatsAppPayload({
+          to,
+          text,
+          code,
+          verifyUrl,
+          messageMode,
+          templateName,
+          templateLanguage,
+        })
+      ),
     });
 
     const data = await response.json();

@@ -8,14 +8,14 @@ import {
   getRateLimitKey,
   rateLimitResponse,
 } from "@/lib/auth/rateLimit";
-
+import { validatePasswordPolicy } from "@/customerAccess/utils/passwordPolicy";
 
 export async function POST(request) {
   try {
     const body = await request.json();
     const { identifier, password, fullName, country, city } = body;
 
-      const rateLimit = checkRateLimit({
+    const rateLimit = checkRateLimit({
       key: getRateLimitKey(request, "signup", identifier),
       ...AUTH_RULES.rateLimit.signup,
     });
@@ -32,11 +32,12 @@ export async function POST(request) {
       );
     }
 
-    // Put the password check HERE
-    if (String(password).length < AUTH_RULES.password.minLength) {
+    const passwordPolicyError = validatePasswordPolicy(password);
+
+    if (passwordPolicyError) {
       return Response.json(
         {
-          error: `Password must be at least ${AUTH_RULES.password.minLength} characters.`,
+          error: passwordPolicyError,
         },
         { status: 400 }
       );
@@ -58,6 +59,26 @@ export async function POST(request) {
     });
 
     if (existingUser) {
+      const submittedChannelIsVerified = email
+        ? Boolean(existingUser.emailVerifiedAt)
+        : Boolean(existingUser.phoneVerifiedAt);
+
+      if (!submittedChannelIsVerified) {
+        return Response.json({
+          message:
+            AUTH_MESSAGES.signup.accountNeedsVerification ||
+            "Account already exists but still needs verification.",
+          user: {
+            id: existingUser.id,
+            name: existingUser.name,
+            email: existingUser.email,
+            phone: existingUser.phone,
+          },
+          shouldStartVerification: true,
+          needsVerification: true,
+        });
+      }
+
       return Response.json(
         { error: AUTH_MESSAGES.signup.userExists },
         { status: 400 }

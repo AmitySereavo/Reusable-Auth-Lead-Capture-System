@@ -189,6 +189,8 @@ async function sendSmsLikeViaProvider({
   identifier,
   text,
   channel,
+  code = null,
+  verifyUrl = null,
 }) {
   if (provider.mode === "console") {
     return sendSmsVerification({
@@ -243,6 +245,11 @@ async function sendSmsLikeViaProvider({
       originalTo: identifier,
       rewritten: false,
       text,
+      code,
+      verifyUrl,
+      messageMode: provider.messageMode,
+      templateName: provider.templateName,
+      templateLanguage: provider.templateLanguage,
     });
   }
 
@@ -309,11 +316,13 @@ export async function sendVerificationDelivery({
             text: content.text,
             html: content.html,
           })
-        : await sendSmsLikeViaProvider({
+          : await sendSmsLikeViaProvider({
             provider,
             identifier,
             text: content.text,
             channel: content.channel,
+            code,
+            verifyUrl,
           });
 
     await createVerificationDeliveryAttempt({

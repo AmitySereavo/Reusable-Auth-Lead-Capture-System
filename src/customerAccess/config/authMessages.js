@@ -11,6 +11,8 @@ export const AUTH_MESSAGES = {
   signup: {
     userExists: "User already exists.",
     accountCreated: "Account created successfully.",
+    accountNeedsVerification:
+      "Account already exists but still needs verification. We sent a new verification code.",
     weakPassword: "Password does not meet the minimum requirements.",
   },
 
