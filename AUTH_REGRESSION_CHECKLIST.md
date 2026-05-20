@@ -1,3 +1,8 @@
+`AUTH_REGRESSION_CHECKLIST.md`
+
+Replace the full file with this:
+
+````md
 # Auth Regression Checklist
 
 Use this checklist after every auth/security/delivery change and before committing.
@@ -6,6 +11,7 @@ This project is currently focused on:
 
 - email-first production readiness
 - Nodemailer SMTP delivery
+- real-recipient email testing before reusable-slide-pages merge
 - WhatsApp API readiness after Meta business verification
 - SMS/Twilio paused unless a business specifically enables it
 - config-driven password policy
@@ -26,19 +32,133 @@ npm run build
 
 ---
 
+## Environment Check
+
+Before testing email delivery, confirm `.env` is set correctly.
+
+### SMTP email
+
+```env
+EMAIL_PROVIDER_MODE="smtp"
+
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER="your-sender-email@gmail.com"
+SMTP_PASS="your-google-app-password"
+SMTP_FROM_EMAIL="Amity Sereavo <your-sender-email@gmail.com>"
+```
+
+- [ ] Confirm `SMTP_HOST` is exactly `smtp.gmail.com`
+- [ ] Confirm `SMTP_USER` is the sender Gmail account
+- [ ] Confirm `SMTP_PASS` is a Google App Password, not the normal Gmail password
+- [ ] Confirm the App Password belongs to the same Google account in `SMTP_USER`
+- [ ] Confirm `SMTP_FROM_EMAIL` matches the sender account
+- [ ] Restart the dev server after `.env` changes
+
+```bash
+Ctrl + C
+npm run dev
+```
+
+### Dev-safe email rewrite
+
+For safe testing:
+
+```env
+EMAIL_DEV_TEST_MODE="true"
+EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
+```
+
+For real-recipient testing:
+
+```env
+EMAIL_DEV_TEST_MODE="false"
+```
+
+- [ ] Confirm `EMAIL_DEV_TEST_MODE="true"` sends test emails to `EMAIL_DEV_TEST_INBOX`
+- [ ] Confirm `EMAIL_DEV_TEST_MODE="false"` sends to the real email entered by the user
+- [ ] Confirm dev server was restarted after changing `EMAIL_DEV_TEST_MODE`
+
+Expected dev-safe delivery log:
+
+```txt
+provider: smtp
+mode: smtp
+ok: true
+rewritten: true
+to: paralifetrees@gmail.com
+originalTo: customer@example.com
+```
+
+Expected real-recipient delivery log:
+
+```txt
+provider: smtp
+mode: smtp
+ok: true
+rewritten: false
+to: customer@example.com
+originalTo: customer@example.com
+```
+
+---
+
 ## Signup + Verification
 
-### Email Signup
+### Email Signup — Dev-Safe Inbox
 
+- [ ] Set `EMAIL_DEV_TEST_MODE="true"`
+- [ ] Set `EMAIL_DEV_TEST_INBOX`
+- [ ] Restart dev server
 - [ ] Go to `/signup`
-- [ ] Sign up with an email address
+- [ ] Sign up with an email address that is not the dev test inbox
 - [ ] Confirm account is created
 - [ ] Confirm verification starts
-- [ ] Confirm verification code/link is sent through the configured email provider
+- [ ] Confirm email arrives in `EMAIL_DEV_TEST_INBOX`
+- [ ] Confirm delivery attempt shows `rewritten: true`
+- [ ] Confirm `originalTo` stores the submitted email
+- [ ] Confirm `to` stores the dev test inbox
 - [ ] Confirm `VerificationCode.code` stores a bcrypt hash, not the raw code
 - [ ] Submit the correct verification code
 - [ ] Confirm account becomes verified
 - [ ] Confirm login works after verification
+
+### Email Signup — Real Recipient
+
+- [ ] Set `EMAIL_DEV_TEST_MODE="false"`
+- [ ] Restart dev server
+- [ ] Go to `/signup`
+- [ ] Sign up with a real email inbox that can be checked
+- [ ] Confirm account is created
+- [ ] Confirm verification starts
+- [ ] Confirm email arrives in the real inbox
+- [ ] Check Inbox, Spam, Junk, Promotions, and Updates folders
+- [ ] Confirm delivery attempt shows `rewritten: false`
+- [ ] Confirm `to` and `originalTo` are the same real email
+- [ ] Confirm provider is `smtp`
+- [ ] Confirm mode is `smtp`
+- [ ] Confirm `ok: true`
+- [ ] Confirm provider message id exists
+- [ ] Submit the correct verification code
+- [ ] Confirm account becomes verified
+- [ ] Confirm login works after verification
+
+### Verification Send Error Visibility
+
+- [ ] Temporarily break SMTP config, such as using an invalid `SMTP_HOST`
+- [ ] Restart dev server
+- [ ] Go to `/signup`
+- [ ] Submit a valid signup
+- [ ] Confirm the app does not silently redirect as if everything worked
+- [ ] Confirm the form displays the verification-send error
+- [ ] Restore SMTP config
+- [ ] Restart dev server
+- [ ] Confirm signup verification works again
+
+---
+
+## Existing Account Signup Behavior
 
 ### Existing Unverified User Signup
 
@@ -61,7 +181,29 @@ npm run build
 
 ---
 
+## Verification Help / Troubleshooting Page
+
+Planned or current route:
+
+```txt
+/verify/help
+```
+
+- [ ] Confirm `/verify/help` loads
+- [ ] Confirm the page tells users to check Inbox, Spam, Junk, Promotions, and Updates folders
+- [ ] Confirm the page tells users to check that the email address is valid
+- [ ] Confirm the page tells users to wait briefly before requesting another code
+- [ ] Confirm the page tells users to use the newest code only
+- [ ] Confirm the page tells users not to share their verification code
+- [ ] Confirm the page links back to `/verify`
+- [ ] Confirm the page links back to `/signup`
+- [ ] Confirm `/verify` has a visible link to `/verify/help`
+
+---
+
 ## Phone Signup + WhatsApp
+
+Phone/WhatsApp is not the first merge priority, but it should remain functional where enabled.
 
 - [ ] Go to `/signup`
 - [ ] Enter a phone number with country code
@@ -283,6 +425,26 @@ Production note:
 
 ---
 
+## Verification Expiry Review
+
+Verification expiry is config-driven and may vary by flow.
+
+- [ ] Confirm code-based verification expiry is short enough for security
+- [ ] Confirm link-based verification expiry gives the customer enough time
+- [ ] Confirm `expiresInMinutes` is intentionally set where used
+- [ ] Confirm `expiresInHours` is intentionally set where used
+- [ ] Do not remove `expiresInHours` globally, because some scenarios may need it
+- [ ] Confirm WhatsApp template validity period matches app code expiry when WhatsApp templates are used
+
+Common guidance:
+
+```txt
+Code verification: 10–15 minutes
+Email link verification: 24 hours may be appropriate
+```
+
+---
+
 ## WhatsApp Production Setup Checklist
 
 Use this when a business is ready for WhatsApp verification in production.
@@ -326,10 +488,14 @@ WhatsApp pricing exposure
 
 ## Forgot Password by Email
 
+- [ ] Set `EMAIL_DEV_TEST_MODE` appropriately for the test
 - [ ] Go to `/forgot-password`
 - [ ] Enter a verified email
 - [ ] Confirm neutral success message appears
 - [ ] Confirm reset link is sent
+- [ ] Confirm delivery attempt is logged
+- [ ] If `EMAIL_DEV_TEST_MODE="true"`, confirm email goes to dev test inbox
+- [ ] If `EMAIL_DEV_TEST_MODE="false"`, confirm email goes to the real email
 - [ ] Immediately request another reset link
 - [ ] Confirm cooldown blocks repeat request
 - [ ] Open reset link
@@ -391,6 +557,7 @@ SMTP_USER="your-sender-email@gmail.com"
 SMTP_PASS="your-google-app-password"
 SMTP_FROM_EMAIL="Amity Sereavo <your-sender-email@gmail.com>"
 
+EMAIL_DEV_TEST_MODE="true"
 EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
 ```
 
@@ -407,7 +574,7 @@ EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
 - [ ] Confirm delivery attempt logs `mode: smtp`
 - [ ] Confirm `ok: true`
 - [ ] Confirm provider message id exists
-- [ ] Confirm email arrives in `EMAIL_DEV_TEST_INBOX`
+- [ ] Confirm email arrives in the expected inbox
 
 Common failure check:
 
@@ -423,7 +590,9 @@ getaddrinfo EAI_FAIL smtp@gmail.com
 
 In development mode, real recipients can be rewritten to a safe inbox.
 
+- [ ] Set `EMAIL_DEV_TEST_MODE="true"`
 - [ ] Set `EMAIL_DEV_TEST_INBOX`
+- [ ] Restart dev server
 - [ ] Trigger verification for a different email address
 - [ ] Confirm `originalTo` stores the real submitted email
 - [ ] Confirm `to` stores the dev test inbox
@@ -436,6 +605,31 @@ Expected behavior:
 originalTo: customer@example.com
 to: paralifetrees@gmail.com
 rewritten: true
+```
+
+---
+
+## Real-Recipient Email Delivery
+
+Use this before production and before merging into reusable-slide-pages.
+
+- [ ] Set `EMAIL_DEV_TEST_MODE="false"`
+- [ ] Restart dev server
+- [ ] Use a real email address that can be checked
+- [ ] Trigger signup verification
+- [ ] Confirm `originalTo` stores the real submitted email
+- [ ] Confirm `to` stores the same real submitted email
+- [ ] Confirm `rewritten: false`
+- [ ] Confirm the email arrives in the real inbox
+- [ ] Check Spam, Junk, Promotions, Updates, and All Mail if needed
+- [ ] Complete verification with the received code
+
+Expected behavior:
+
+```txt
+originalTo: customer@example.com
+to: customer@example.com
+rewritten: false
 ```
 
 ---
@@ -602,7 +796,7 @@ Records cleaned:
 - [ ] Confirm verification starts if required
 - [ ] Complete verification
 - [ ] Confirm verified redirect works
-- [ ] Repeat with phone/WhatsApp
+- [ ] Repeat with phone/WhatsApp if phone flows are enabled
 - [ ] Confirm already-verified submitted-channel skip logic works
 
 ---
@@ -622,6 +816,7 @@ Check `VerificationDeliveryAttempt` after each delivery test.
 - [ ] Confirm provider message id is saved when available
 - [ ] Confirm provider errors are normalized
 - [ ] Confirm metadata includes parsed identifier type and requested phone channel
+- [ ] Confirm no missing delivery attempt when a verification message was supposed to send
 
 ---
 
@@ -669,6 +864,8 @@ Confirm these remain configurable:
 - [ ] SMS enabled/disabled state
 - [ ] WhatsApp message mode
 - [ ] WhatsApp template name/language
+- [ ] email dev-safe rewrite mode
+- [ ] real-recipient email testing mode
 
 Files:
 
@@ -697,8 +894,22 @@ Before merging into reusable-slide-pages, confirm:
 - [ ] Accounts can later own download access
 - [ ] Ticket owners can later choose meals through verified access
 - [ ] Email is production-ready before merge
+- [ ] Real-recipient email delivery is tested before merge
 - [ ] WhatsApp can be added later after Meta business verification
 - [ ] SMS remains optional/paused unless needed
+
+---
+
+## Future Messaging / Invoice Direction
+
+Before adding invoices or marketing sequences:
+
+- [ ] Keep auth responsible for users, verified emails, sessions, and consent/opt-in status later
+- [ ] Keep reusable-slide-pages responsible for products, tickets, invitations, meals, orders, invoices, and downloads
+- [ ] Plan a shared messaging layer for email sending, WhatsApp sending later, templates, delivery logs, and sequences
+- [ ] Use email first for invoice and order-confirmation delivery
+- [ ] Add WhatsApp invoice/order notifications later only after Meta production setup is ready
+- [ ] Add marketing sequences only after consent/opt-in rules are designed
 
 ---
 
@@ -711,6 +922,7 @@ Before using this system for a new business/app:
 - [ ] Set email sender identity
 - [ ] Test SMTP sender
 - [ ] Confirm dev-safe inbox rewriting is disabled or appropriate for production
+- [ ] Run real-recipient email delivery test
 - [ ] Review password policy
 - [ ] Review verification expiry
 - [ ] Review verification resend cooldown
@@ -736,3 +948,4 @@ Before commit:
 - [ ] Commit with clear message
 - [ ] Push to GitHub
 - [ ] Share new SHA as source of truth
+````

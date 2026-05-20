@@ -1,5 +1,5 @@
 export const verificationProviders = {
-    email: {
+  email: {
     mode:
       process.env.EMAIL_PROVIDER_MODE ||
       (process.env.SMTP_HOST
@@ -13,7 +13,11 @@ export const verificationProviders = {
       process.env.RESEND_FROM_EMAIL ||
       "no-reply@example.com",
 
-    devTestMode: process.env.NODE_ENV !== "production",
+    devTestMode:
+      process.env.EMAIL_DEV_TEST_MODE === "true" ||
+      (process.env.NODE_ENV !== "production" &&
+        process.env.EMAIL_DEV_TEST_MODE !== "false"),
+
     devTestInbox:
       process.env.EMAIL_DEV_TEST_INBOX ||
       process.env.RESEND_DEV_TEST_EMAIL ||

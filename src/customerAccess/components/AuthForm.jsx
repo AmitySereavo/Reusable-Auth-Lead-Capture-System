@@ -237,7 +237,7 @@ export default function AuthForm({
       }
 
       if (shouldStartVerification) {
-        await fetch("/api/verify/start", {
+        const verifyStartResponse = await fetch("/api/verify/start", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -256,6 +256,28 @@ export default function AuthForm({
                 : null,
           }),
         });
+
+        const verifyStartData = await verifyStartResponse.json();
+
+        if (!verifyStartResponse.ok) {
+          setMessage(
+            verifyStartData.details ||
+              verifyStartData.error ||
+              "Account was created, but the verification message could not be sent."
+          );
+          setMessageType("error");
+          return;
+        }
+
+        if (verifyStartData?.delivery?.ok === false) {
+          setMessage(
+            verifyStartData.delivery.message ||
+              verifyStartData.delivery.error ||
+              "Account was created, but the verification message could not be delivered."
+          );
+          setMessageType("error");
+          return;
+        }
       }
 
       if (

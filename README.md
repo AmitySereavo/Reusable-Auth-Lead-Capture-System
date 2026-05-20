@@ -37,6 +37,7 @@ The current goal is to polish this system as a standalone reusable auth/account 
 - Config-driven maximum verification code attempts
 - Config-driven resend cooldown for verification requests
 - Existing unverified users can re-enter signup and continue verification instead of being blocked by “user already exists”
+- Verification send errors are surfaced to the form instead of silently redirecting
 
 ### Lead Capture
 
@@ -58,6 +59,7 @@ The current goal is to polish this system as a standalone reusable auth/account 
 - Meta WhatsApp Cloud API provider
 - Twilio SMS support exists but SMS is currently paused/optional
 - Dev-safe email inbox rewriting
+- Real-recipient email testing switch
 - Normalized delivery result structure
 - Delivery-attempt audit logging
 
@@ -70,6 +72,7 @@ Email currently supports:
 - SMTP email provider through Nodemailer
 - Gmail SMTP testing through Google App Passwords
 - Dev-safe test inbox rewriting through `EMAIL_DEV_TEST_INBOX`
+- Real-recipient email sending in development by setting `EMAIL_DEV_TEST_MODE="false"`
 
 Current preferred direction:
 
@@ -199,6 +202,8 @@ src/
     verify/
       page.js
       VerifyPageClient.jsx
+      help/
+        page.js
       link-sent/
         page.js
       verified-lead/
@@ -270,14 +275,14 @@ src/
 
 ## Signup Flow
 
-1. User submits signup form
-2. Identifier can be email or phone
-3. If identifier is a phone number, WhatsApp/SMS choice can appear automatically
-4. SMS can be visible but disabled if the business has SMS turned off
-5. Account is created
-6. Verification starts
-7. User completes verification
-8. User continues through configured redirect flow
+1. User submits signup form.
+2. Identifier can be email or phone.
+3. If identifier is a phone number, WhatsApp/SMS choice can appear automatically.
+4. SMS can be visible but disabled if the business has SMS turned off.
+5. Account is created.
+6. Verification starts.
+7. User completes verification.
+8. User continues through configured redirect flow.
 
 If a user already exists but the submitted channel is not verified:
 
@@ -296,14 +301,24 @@ If a user already exists and the submitted channel is already verified:
 → user receives “User already exists”
 ```
 
+If signup succeeds but verification delivery fails:
+
+```txt
+/signup
+→ account is created
+→ /api/verify/start returns error
+→ frontend shows the verification-send error
+→ user does not blindly continue without knowing the code was not sent
+```
+
 ## Login Flow
 
-1. User enters email/phone and password
-2. Server checks credentials
-3. Verification state is checked
-4. Session is created
-5. Session token is stored in an HTTP-only cookie
-6. User is redirected to `/dashboard`
+1. User enters email/phone and password.
+2. Server checks credentials.
+3. Verification state is checked.
+4. Session is created.
+5. Session token is stored in an HTTP-only cookie.
+6. User is redirected to `/dashboard`.
 
 If the account is not verified:
 
@@ -316,37 +331,37 @@ If the account is not verified:
 
 ## Logout Flow
 
-1. User clicks logout
-2. Current session is revoked server-side
-3. Session cookie is cleared
-4. User is redirected to `/login`
-5. Protected routes no longer render for logged-out users
+1. User clicks logout.
+2. Current session is revoked server-side.
+3. Session cookie is cleared.
+4. User is redirected to `/login`.
+5. Protected routes no longer render for logged-out users.
 
 ## Forgot Password by Email
 
-1. User opens `/forgot-password`
-2. User enters email
-3. If the email matches a verified account, a password reset link is sent
-4. User opens `/reset-password?token=...`
-5. User enters a new password
-6. Password policy is validated
-7. Password is updated
-8. Existing sessions are revoked
-9. User returns to login
+1. User opens `/forgot-password`.
+2. User enters email.
+3. If the email matches a verified account, a password reset link is sent.
+4. User opens `/reset-password?token=...`.
+5. User enters a new password.
+6. Password policy is validated.
+7. Password is updated.
+8. Existing sessions are revoked.
+9. User returns to login.
 
 ## Forgot Password by Phone
 
-1. User opens `/forgot-password`
-2. User enters phone number
-3. WhatsApp/SMS choice appears depending on config
-4. A password reset code is sent through the selected enabled channel
-5. User enters the code at `/forgot-password/code`
-6. Server creates a short-lived reset access grant
-7. User is redirected to `/reset-password`
-8. User enters a new password
-9. Password policy is validated
-10. Password is updated
-11. Existing sessions are revoked
+1. User opens `/forgot-password`.
+2. User enters phone number.
+3. WhatsApp/SMS choice appears depending on config.
+4. A password reset code is sent through the selected enabled channel.
+5. User enters the code at `/forgot-password/code`.
+6. Server creates a short-lived reset access grant.
+7. User is redirected to `/reset-password`.
+8. User enters a new password.
+9. Password policy is validated.
+10. Password is updated.
+11. Existing sessions are revoked.
 
 ---
 
@@ -377,6 +392,44 @@ The main verification flow supports code and link delivery.
 - code attempt limits are enforced
 - verification request cooldowns are enforced
 - expired records are cleaned opportunistically from auth routes
+
+---
+
+## Verification Expiry Notes
+
+Verification expiry is config-driven and should be reviewed per business and per delivery type.
+
+Short one-time codes usually need a short expiry, such as:
+
+```txt
+10–15 minutes
+```
+
+Email verification links or slower customer flows may need a longer expiry, such as:
+
+```txt
+24 hours
+```
+
+Some flows may intentionally use `expiresInHours`. Do not remove `expiresInHours` globally. Instead, confirm that each form’s verification config matches the intended delivery type and customer experience.
+
+Examples:
+
+```js
+verification: {
+  delivery: "code",
+  expiresInMinutes: 15,
+}
+```
+
+```js
+verification: {
+  delivery: "link",
+  expiresInHours: 24,
+}
+```
+
+For WhatsApp authentication templates later, the WhatsApp template validity period should match the app’s verification-code expiry.
 
 ---
 
@@ -529,6 +582,11 @@ Preferred self-managed email sending option.
 ```env
 EMAIL_PROVIDER_MODE="smtp"
 
+# true = rewrite outgoing emails to EMAIL_DEV_TEST_INBOX during development
+# false = send to the real email address entered by the user
+EMAIL_DEV_TEST_MODE="true"
+EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
+
 SMTP_HOST="smtp.gmail.com"
 SMTP_PORT="587"
 SMTP_SECURE="false"
@@ -537,7 +595,6 @@ SMTP_USER="your-sender-email@gmail.com"
 SMTP_PASS="your-google-app-password"
 
 SMTP_FROM_EMAIL="Amity Sereavo <your-sender-email@gmail.com>"
-EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
 ```
 
 For Gmail SMTP:
@@ -548,13 +605,44 @@ For Gmail SMTP:
 - the App Password must be created from the same Google account used in `SMTP_USER`
 - `SMTP_FROM_EMAIL` should match the sender account
 
-In development mode, email can be rewritten to:
+### Real-recipient email testing
+
+During development, the app can rewrite outgoing email to a safe test inbox.
+
+When `EMAIL_DEV_TEST_MODE="true"`, the app sends emails to:
 
 ```txt
 EMAIL_DEV_TEST_INBOX
 ```
 
-This means a signup email entered by a user can be safely sent to your test inbox instead of the real user during testing.
+instead of the email entered by the user.
+
+For real-recipient testing before production or before merging into reusable-slide-pages, set:
+
+```env
+EMAIL_DEV_TEST_MODE="false"
+```
+
+Expected delivery log for real-recipient testing:
+
+```txt
+provider: smtp
+mode: smtp
+ok: true
+status: sent
+rewritten: false
+to: real-customer@example.com
+originalTo: real-customer@example.com
+```
+
+If `rewritten: true`, the app is still in dev-safe rewrite mode or the dev server was not restarted after changing `.env`.
+
+After changing `.env`, always restart the dev server:
+
+```bash
+Ctrl + C
+npm run dev
+```
 
 ### Resend email
 
@@ -770,6 +858,7 @@ A future production deployment can also expose this through a scheduled cron rou
 - `/reset-password`
 - `/dashboard`
 - `/verify`
+- `/verify/help`
 - `/verify/link-sent`
 - `/verify/verified-lead`
 - `/example/lead-capture`
@@ -891,6 +980,8 @@ Used after successful phone code verification to allow access to the reset-passw
 - Password fields show live strength
 - Confirm password blocks paste/drop
 - Confirm password gives live match/mismatch feedback
+- Verification-send errors are displayed instead of failing silently
+- `/verify/help` is planned/available as a troubleshooting page for users who cannot find their code
 
 ---
 
@@ -905,13 +996,17 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 EMAIL_PROVIDER_MODE="smtp"
 
+# true = rewrite outgoing emails to EMAIL_DEV_TEST_INBOX during development
+# false = send to the real email address entered by the user
+EMAIL_DEV_TEST_MODE="true"
+EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
+
 SMTP_HOST="smtp.gmail.com"
 SMTP_PORT="587"
 SMTP_SECURE="false"
 SMTP_USER="your-sender-email@gmail.com"
 SMTP_PASS="your-google-app-password"
 SMTP_FROM_EMAIL="Amity Sereavo <your-sender-email@gmail.com>"
-EMAIL_DEV_TEST_INBOX="paralifetrees@gmail.com"
 
 RESEND_API_KEY=""
 RESEND_FROM_EMAIL=""
@@ -983,6 +1078,7 @@ Core checks:
 - email verification works
 - SMTP sends successfully
 - dev-safe email inbox rewrite works
+- real-recipient email test works with `EMAIL_DEV_TEST_MODE="false"`
 - existing unverified user can continue verification
 - login works
 - unverified login routes to verification
@@ -993,6 +1089,7 @@ Core checks:
 - show/hide password works
 - confirm password paste is blocked
 - confirm password match/mismatch signal works
+- verification send errors are visible
 - rate limiting works
 - expired auth cleanup works
 - lead capture works
@@ -1001,7 +1098,12 @@ Core checks:
 
 ## Recommended Next Improvements
 
-- Update `AUTH_REGRESSION_CHECKLIST.md` for the new SMTP, WhatsApp, SMS-paused, and password-policy behavior
+- Add `/verify/help` troubleshooting page for users who cannot find their verification code
+- Add a visible link from `/verify` to `/verify/help`
+- Update `AUTH_REGRESSION_CHECKLIST.md` for the real-recipient email test and verification troubleshooting page
+- Keep email as the first production-ready communication channel for reusable-slide-pages merge
+- Keep WhatsApp API/template messaging staged until Meta business verification is complete
+- Add shared messaging module later for invoices, order confirmations, ticket delivery, and marketing sequences
 - Add production setup checklist for WhatsApp template expiry matching app expiry
 - Add production setup checklist for verification resend cooldown and rate limits per business
 - Add production-grade Redis/Upstash-backed rate limiting
@@ -1043,6 +1145,63 @@ Likely merge direction:
 - connect slide order/ticket/download records to authenticated users later
 - use email first for reusable-slide-pages invitation/account flows
 - add WhatsApp later after business verification and template approval
+
+---
+
+## Email-First Merge Direction
+
+Before merging into reusable-slide-pages, the auth system should be treated as email-first.
+
+Initial merge communication channels:
+
+```txt
+Primary:
+- Email signup verification
+- Email password reset
+- Email account communication
+
+Deferred:
+- WhatsApp API notifications
+- WhatsApp authentication templates
+- SMS/Twilio
+```
+
+Reusable-slide-pages should initially use the merged auth/messaging foundation for:
+
+- account signup verification
+- password reset
+- order confirmation emails
+- invoice emails
+- ticket/invitation delivery emails
+- download access emails
+
+WhatsApp and SMS can be added after the auth system is merged and after WhatsApp production permissions/templates are approved.
+
+Marketing sequences and invoices should not live only inside auth or only inside reusable-slide-pages. The long-term direction is a shared messaging layer:
+
+```txt
+Auth:
+- users
+- verified emails
+- sessions
+- consent/opt-in status later
+
+Reusable-slide-pages:
+- products
+- tickets
+- invitations
+- meals
+- orders
+- invoices
+- downloads
+
+Shared messaging:
+- email sending
+- WhatsApp sending later
+- templates
+- delivery logs
+- marketing sequences
+```
 
 ---
 
